@@ -1,0 +1,9 @@
+{
+  "best_reward": 0.014355,
+  "final_portfolio_value": 99993.83,
+  "average_reward": -0.010093,
+  "average_reward_last_50": -0.002468,
+  "best_sharpe": 0.781,
+  "total_episodes": 500,
+  "final_epsilon": 0.01
+}
