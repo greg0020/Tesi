@@ -312,7 +312,7 @@ def main():
         summary_lines.append(f"  Sortino Ratio: {m.get('sortino_ratio', 0):.3f}")
         summary_lines.append(f"  Max Drawdown:  {m.get('max_drawdown', 0):.2%}")
         summary_lines.append(f"  N. Trades:     {m.get('n_trades', 'N/A')}")
-        summary_lines.append(f"  Win Rate:      {m.get('win_rate', 0)::.2%}")
+        summary_lines.append(f"  Win Rate:      {m.get('win_rate', 0):.2%}")
         summary_lines.append(f"  Final Balance: ${m.get('final_balance', 0):,.2f}")
         summary_lines.append("")
     summary_lines.append("=" * 60)
