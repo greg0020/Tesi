@@ -46,7 +46,7 @@ class TradingEnvironmentCloseOnly:
         self.prices = self.df['Close'].values.astype(np.float64)
 
         # Feature: tutte le colonne tranne Date, Close e prezzi grezzi delle gambe
-        exclude_cols = ['Date', 'Close', 'Naphtha_Close', 'Brent_Close', 'Crack_Spread']
+        exclude_cols = ['Date', 'Close', 'Naphtha_Close', 'Brent_Close', 'Brent_Volume' ,  'Crack_Spread']
         all_feature_cols = [c for c in self.df.columns if c not in exclude_cols]
 
         # Filtra feature per gruppo se specificato

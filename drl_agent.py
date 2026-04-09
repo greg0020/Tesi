@@ -100,13 +100,13 @@ class DRLAgent:
         self.steps_done = 0
 
     def get_epsilon(self) -> float:
-        """Calcola epsilon corrente con decadimento esponenziale."""
+        "Calcola epsilon corrente con decadimento esponenziale."
         eps = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
               np.exp(-self.steps_done / self.epsilon_decay)
         return eps
 
     def select_action(self, state: np.ndarray, training: bool = True) -> int:
-        """Seleziona un'azione con politica epsilon-greedy (training) o greedy (eval)."""
+        "Seleziona un'azione con politica epsilon-greedy (training) o greedy (eval)."
         if training:
             epsilon = self.get_epsilon()
             if random.random() < epsilon:

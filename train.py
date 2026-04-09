@@ -95,7 +95,10 @@ def train(args):
             agent.store_transition(state, action, reward, next_state, float(done))
 
             # Addestra l'agente
-            loss = agent.learn()
+            if step % 4 == 0 :
+                loss = agent.learn()
+            else: 
+                loss = None   
 
             # Track loss
             if loss is not None:
@@ -271,7 +274,7 @@ def parse_args():
     parser.add_argument('--hidden2', type=int, default=64)
     parser.add_argument('--hidden3', type=int, default=32)
     # Training
-    parser.add_argument('--n_episodes', type=int, default=500)
+    parser.add_argument('--n_episodes', type=int, default=100)
     parser.add_argument('--print_every', type=int, default=10)
     parser.add_argument('--save_every', type=int, default=100)
     # Feature selection

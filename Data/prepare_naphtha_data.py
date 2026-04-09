@@ -10,7 +10,7 @@ import argparse
 import os
 
 
-def compute_crack_features(crack: pd.Series, naphtha: pd.Series, brent: pd.Series,
+def compute_crack_features(crack: pd.Series, naphtha: pd.Series, brent: pd.Series, brent_volume: pd.Series ,
                            vol_window: int = 20, mean_window: int = 20) -> pd.DataFrame:
     """
     Calcola le feature per il mean-reversion trading del crack spread,
@@ -110,11 +110,6 @@ def compute_crack_features(crack: pd.Series, naphtha: pd.Series, brent: pd.Serie
     # 8-9. MOMENTUM — tendenza recente del crack
     #    momentum_5: segnale a breve per overshooting detection
     #    momentum_10: segnale più lungo per regime detection
-    #    In mean reversion: momentum forte = potenziale overshooting (contrarian)
-    #    NOTA: rolling_vol_crack_5 e vol_ratio_5_20 rimossi perché il rapporto
-    #    tra vol corta e lunga è già catturato implicitamente dalla combinazione
-    #    di shock (usa vol_20) e momentum (usa finestra corta).
-    # =========================================================================
     df['momentum_crack_5'] = crack - crack.shift(5)
     df['momentum_crack_10'] = crack - crack.shift(10)
 
@@ -186,6 +181,13 @@ def compute_crack_features(crack: pd.Series, naphtha: pd.Series, brent: pd.Serie
     # =========================================================================
     df['shock_x_zscore'] = df['shock'] * df['zscore_crack']
 
+    df['log_brent_volume'] = np.log(brent_volume + 1.0)
+    df['brent_volume_zscore_20'] = (
+    (brent_volume - brent_volume.rolling(vol_window).mean()) /
+    (brent_volume.rolling(vol_window).std() + 1e-8))
+
+    df['brent_volume_change'] = brent_volume.pct_change()
+
     return df
 
 
@@ -214,7 +216,7 @@ def prepare_data(naphtha_path: str = 'Data/naphtha_path.csv', brent_path: str = 
 
     # Rinomina colonne
     df_naphtha = df_naphtha[[date_col, close_col]].rename(columns={close_col: 'Naphtha_Close'})
-    df_brent = df_brent[[date_col, close_col]].rename(columns={close_col: 'Brent_Close'})
+    df_brent = df_brent[[date_col, close_col, 'PX_VOLUME']].rename(columns={close_col: 'Brent_Close' , 'PX_VOLUME' : 'Brent_Volume'})
 
     # Merge su data (inner join: solo giorni in comune)
     df = pd.merge(df_naphtha, df_brent, on=date_col, how='inner')
@@ -232,12 +234,13 @@ def prepare_data(naphtha_path: str = 'Data/naphtha_path.csv', brent_path: str = 
     features = compute_crack_features(
         crack=df['Crack_Spread'],
         naphtha=df['Naphtha_Close'],
-        brent=df['Brent_Close']
+        brent=df['Brent_Close'] , 
+        brent_volume=df['Brent_Volume']
     )
 
     # Assembla dataset finale
     result = pd.concat([
-        df[[date_col, 'Close', 'Naphtha_Close', 'Brent_Close', 'Crack_Spread']],
+        df[[date_col, 'Close', 'Naphtha_Close', 'Brent_Close', 'Brent_Volume', 'Crack_Spread']],
         features
     ], axis=1)
 
@@ -248,12 +251,6 @@ def prepare_data(naphtha_path: str = 'Data/naphtha_path.csv', brent_path: str = 
     print(f"Righe rimosse per NaN: {n_before - n_after}")
     print(f"Dataset finale: {n_after} righe, {len(result.columns)} colonne")
 
-    # Verifica che non ci siano infiniti
-    inf_mask = np.isinf(result.select_dtypes(include=[np.number]).values)
-    if inf_mask.any():
-        print(f"ATTENZIONE: {inf_mask.sum()} valori infiniti trovati, sostituiti con NaN e rimossi")
-        result = result.replace([np.inf, -np.inf], np.nan).dropna().reset_index(drop=True)
-
     # Split train/test
     split_idx = int(len(result) * train_ratio)
     train_df = result.iloc[:split_idx].reset_index(drop=True)
@@ -263,7 +260,7 @@ def prepare_data(naphtha_path: str = 'Data/naphtha_path.csv', brent_path: str = 
     print(f"Test:  {len(test_df)} righe ({test_df[date_col].min()} - {test_df[date_col].max()})")
 
     # Stampa colonne feature
-    feature_cols = [c for c in result.columns if c not in [date_col, 'Close', 'Naphtha_Close', 'Brent_Close', 'Crack_Spread']]
+    feature_cols = [c for c in result.columns if c not in [date_col, 'Close', 'Naphtha_Close', 'Brent_Close'  , 'Brent_Volume' , 'Crack_Spread']]
     print(f"\nFeature ({len(feature_cols)}):")
     for i, col in enumerate(feature_cols):
         print(f"  {i+1:3d}. {col}")

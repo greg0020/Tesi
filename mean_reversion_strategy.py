@@ -1,16 +1,5 @@
 """
 Scaillet et al. shock-based mean-reversion strategy for the naphtha crack spread.
-
-=== Conceptual difference ===
-
-Classical mean reversion (Bollinger / z-score on price):
-    z_t = (P_t - MA_t) / sigma_t
-    Entry when |z_t| > threshold, exit when z_t reverts toward 0.
-    This measures how far the *level* of the price is from its recent mean.
-    It implicitly assumes the price level is stationary around a slow-moving
-    average – an assumption that often fails for commodity spreads with
-    trending or shifting fundamentals.
-
 Scaillet-style mean reversion (standardized daily crack shocks):
     delta_t   = P_t - P_{t-1}          (daily change in the crack spread)
     vol_t     = rolling_std(delta, w)   (local volatility of daily changes)
@@ -48,12 +37,12 @@ class MeanReversionStrategy:
 
     def __init__(self,
                  lookback: int = 20,
-                 entry_threshold: float = 1.0,
-                 holding_period: int = 5,
-                 stop_loss: float = 50.0,
-                 take_profit: float = 50.0,
+                 entry_threshold: float = 1.2,
+                 holding_period: int = 3,
+                 stop_loss: float = 0.3,
+                 take_profit: float = 0.3,
                  initial_balance: float = 100000.0,
-                 transaction_cost: float = 0.001):
+                 transaction_cost: float = 0.0005):
         """
         Args:
             lookback: rolling window for volatility of daily changes
@@ -72,19 +61,7 @@ class MeanReversionStrategy:
         self.initial_balance = initial_balance
         self.transaction_cost = transaction_cost
 
-    # --------------------------------------------------------------------- #
-    #  Shock computation                                                      #
-    # --------------------------------------------------------------------- #
-
     def compute_shocks(self, prices: np.ndarray) -> tuple:
-        """
-        Compute the standardised daily crack-spread shocks.
-
-        Returns:
-            delta:   array of daily price changes  (NaN at index 0)
-            vol:     rolling std of delta           (NaN for first lookback+1 bars)
-            shock:   delta / vol                    (NaN where vol is undefined)
-        """
         n = len(prices)
         delta = np.full(n, np.nan)
         vol = np.full(n, np.nan)
@@ -105,21 +82,10 @@ class MeanReversionStrategy:
 
         return delta, vol, shock
 
-    # --------------------------------------------------------------------- #
-    #  Signal generation + position tracking                                  #
-    # --------------------------------------------------------------------- #
+
 
     def generate_signals(self, prices: np.ndarray) -> dict:
-        """
-        Generate signals and track positions bar-by-bar.
-
-        Returns a dict with arrays of length n:
-            signals:          0=hold, 1=buy/long, 2=sell/short
-            positions:        position after action at bar i  (-1, 0, +1)
-            entry_prices:     entry price of the current position (0 if flat)
-            time_in_position: how many bars the current position has been held
-            unrealised_pnl:   mark-to-market PnL of the open position
-        """
+        
         _, _, shock = self.compute_shocks(prices)
         n = len(prices)
 
@@ -137,15 +103,15 @@ class MeanReversionStrategy:
         for i in range(n):
             s = shock[i]
 
-            # -------------------------------------------------------------- #
+            
             # 1. If in a position, check exit conditions FIRST                #
-            # -------------------------------------------------------------- #
+           
             if pos != 0:
                 bars_held += 1
                 if pos == 1:
-                    pnl = prices[i] - entry_price
+                    pnl = prices[i] - entry_price 
                 else:  # pos == -1
-                    pnl = entry_price - prices[i]
+                    pnl = entry_price - prices[i] 
 
                 exit_now = False
                 # Fixed holding period
@@ -179,9 +145,9 @@ class MeanReversionStrategy:
                     signals[i] = 0  # hold
                     continue
 
-            # -------------------------------------------------------------- #
+            
             # 2. Flat – check entry conditions                                #
-            # -------------------------------------------------------------- #
+            
             if np.isnan(s):
                 signals[i] = 0
                 positions[i] = 0
@@ -236,7 +202,7 @@ class MeanReversionStrategy:
             print(f"  📊 Shocks > +{self.entry_threshold:.1f}: {(valid_shocks > self.entry_threshold).sum()}, "
                   f"Shocks < -{self.entry_threshold:.1f}: {(valid_shocks < -self.entry_threshold).sum()}", flush=True)
         else:
-            print(f"  ⚠️ No valid shocks computed (not enough data?)", flush=True)
+            print(f"  ⚠️ No valid shocks computed ", flush=True)
 
         sig_data = self.generate_signals(prices)
         signals = sig_data['signals']
@@ -273,10 +239,10 @@ class MeanReversionStrategy:
             if pos != 0 and action != 0:
                 # Closing the position
                 if pos == 1:
-                    raw_pnl = price - entry_price
+                    raw_pnl = price - entry_price 
                 else:
-                    raw_pnl = entry_price - price
-                tc_close = abs(price) * self.transaction_cost
+                    raw_pnl = entry_price - price 
+                tc_close = self.transaction_cost
                 trade_pnl = raw_pnl - tc_close
                 trades.append({
                     'type': 'close_long' if pos == 1 else 'close_short',
@@ -312,7 +278,7 @@ class MeanReversionStrategy:
                     # This bar was an exit bar; do not re-enter immediately
                     pass
                 else:
-                    tc_open = abs(price) * self.transaction_cost
+                    tc_open = self.transaction_cost
                     balance -= tc_open
                     entry_price = price
                     bars_held = 0
@@ -412,3 +378,13 @@ class MeanReversionStrategy:
             'trades': trades,
             'signals': signals.tolist(),
         }
+
+if __name__ == "__main__":
+        strategy = MeanReversionStrategy()
+        results = strategy.backtest("Data/naphtha_crack_test.csv")
+    
+        print("Return:", results["total_return"])
+        print("Sharpe:", results["sharpe_ratio"])
+        print("Trades:", results["n_trades"])
+        print("Win rate:", results["win_rate"])
+
