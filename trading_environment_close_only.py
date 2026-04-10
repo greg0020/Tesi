@@ -43,7 +43,9 @@ class TradingEnvironmentCloseOnly:
 
         # Carica e prepara dati
         self.df = pd.read_csv(data_path)
-        self.prices = self.df['Close'].values.astype(np.float64)
+        self.crack_prices = self.df['Close'].values.astype(np.float64)
+        self.naphtha_prices = self.df['Naphtha_Close'].values.astype(np.float64)
+        self.brent_prices = self.df['Brent_Close'].values.astype(np.float64)
 
         # Feature: tutte le colonne tranne Date, Close e prezzi grezzi delle gambe
         exclude_cols = ['Date', 'Close', 'Naphtha_Close', 'Brent_Close', 'Brent_Volume' ,  'Crack_Spread']
@@ -68,7 +70,7 @@ class TradingEnvironmentCloseOnly:
         self.features_norm = (self.features - self.feature_mean) / self.feature_std
 
         self.n_features = self.features_norm.shape[1]
-        self.n_steps = len(self.prices)
+        self.n_steps = len(self.crack_prices)
 
         # Dimensione stato: feature di mercato + posizione + unrealized PnL + time in position
         # position_encoding:  -1 (short), 0 (flat), 1 (long)
@@ -88,7 +90,8 @@ class TradingEnvironmentCloseOnly:
         self.current_step = self.window_size
         self.balance = self.initial_balance
         self.position = 0  # -1=short, 0=flat, 1=long
-        self.entry_price = 0.0
+        self.entry_naphtha = 0.0
+        self.entry_brent = 0.0
         self.total_pnl = 0.0
         self.time_in_position = 0  # contatore step in posizione
 
@@ -126,11 +129,19 @@ class TradingEnvironmentCloseOnly:
         pos_encoding = float(self.position)
 
         # PnL non realizzato normalizzato
-        if self.position != 0 and abs(self.entry_price) > 1e-8:
-            current_price = self.prices[self.current_step]
-            unrealized = self.position * (current_price - self.entry_price) / abs(self.entry_price)
-        else:
-            unrealized = 0.0
+        if self.position != 0 :
+            current_naphtha = self.naphtha_prices[self.current_step]
+            current_brent = self.brent_prices[self.current_step]
+            if self.position == 1:  # long crack = long naphtha, short brent
+                pnl_naphtha = current_naphtha - self.entry_naphtha
+                pnl_brent = self.entry_brent - current_brent
+            else: # else position == -1: short crack = short naphtha, long brent
+                pnl_naphtha =self.entry_naphtha - current_naphtha
+                pnl_brent = current_brent - self.entry_brent
+
+            denom=abs(self.entry_naphtha) + abs(self.entry_brent) + 1e-8
+            unrealized = (pnl_naphtha + pnl_brent) / denom
+        else:  unrealized = 0.0        
 
         # Tempo in posizione normalizzato (saturato a 1.0)
         time_norm = min(self.time_in_position / self.max_holding, 1.0)
