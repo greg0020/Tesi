@@ -10,6 +10,7 @@ from collections import deque
 
 
 class TradingEnvironmentCloseOnly:
+
     """
     Ambiente di trading che usa solo prezzi di chiusura e feature derivate.
     Pensato per strategie di mean reversion su spread (naphtha crack).
@@ -133,14 +134,14 @@ class TradingEnvironmentCloseOnly:
             current_naphtha = self.naphtha_prices[self.current_step]
             current_brent = self.brent_prices[self.current_step]
             if self.position == 1:  # long crack = long naphtha, short brent
-                pnl_naphtha = current_naphtha - self.entry_naphtha
-                pnl_brent = self.entry_brent - current_brent
+                pnl_naphtha = (current_naphtha - self.entry_naphtha) / self.entry_naphtha
+                pnl_brent = (self.entry_brent - current_brent) / self.entry_brent 
             else: # else position == -1: short crack = short naphtha, long brent
-                pnl_naphtha =self.entry_naphtha - current_naphtha
-                pnl_brent = current_brent - self.entry_brent
+                pnl_naphtha =(self.entry_naphtha - current_naphtha) / self.entry_naphtha
+                pnl_brent = (current_brent - self.entry_brent) / self.entry_brent
 
-            denom=abs(self.entry_naphtha) + abs(self.entry_brent) + 1e-8
-            unrealized = (pnl_naphtha + pnl_brent) / denom
+            
+            unrealized = (pnl_naphtha + pnl_brent) 
         else:  unrealized = 0.0        
 
         # Tempo in posizione normalizzato (saturato a 1.0)
@@ -161,7 +162,8 @@ class TradingEnvironmentCloseOnly:
         """
         assert 0 <= action <= 2, f"Azione non valida: {action}"
 
-        current_price = self.prices[self.current_step]
+        current_naphtha = self.naphtha_prices[self.current_step]
+        current_brent = self.brent_prices[self.current_step]
         prev_portfolio = self._get_portfolio_value()
         trade_pnl = 0.0
         transaction_cost_paid = 0.0
@@ -170,62 +172,66 @@ class TradingEnvironmentCloseOnly:
         if action == 1:  # Buy/Long
             if self.position == -1:
                 # Chiudi short
-                trade_pnl = self.entry_price - current_price
-                transaction_cost_paid += abs(trade_pnl) * self.transaction_cost if trade_pnl != 0 else current_price * self.transaction_cost
-                self.balance += trade_pnl - transaction_cost_paid
-                self.total_pnl += trade_pnl - transaction_cost_paid
+                trade_pnl = ((self.entry_naphtha - current_naphtha)/self.entry_naphtha) + ((current_brent - self.entry_brent)/ self.entry_brent)
+                self.balance += trade_pnl - self.transaction_cost
+                self.total_pnl += trade_pnl - self.transaction_cost
                 self.trades.append({
-                    'type': 'close_short',
+                    'type': 'close_short_crack',
                     'step': self.current_step,
-                    'price': current_price,
+                    'naphtha_price': current_naphtha,
+                    'brent_price': current_brent,
                     'pnl': trade_pnl - transaction_cost_paid,
                     'holding_period': self.time_in_position
                 })
                 self.position = 0
-                self.entry_price = 0.0
+                self.entry_naphtha = 0.0
+                self.entry_brent = 0.0
                 self.time_in_position = 0
-            if self.position == 0:
+            elif self.position == 0:
                 # Apri long
                 self.position = 1
-                self.entry_price = current_price
+                self.entry_naphtha = current_naphtha
+                self.entry_brent = current_brent
                 self.time_in_position = 0
-                transaction_cost_paid += current_price * self.transaction_cost
-                self.balance -= transaction_cost_paid
+                self.balance -= self.transaction_cost
                 self.trades.append({
                     'type': 'open_long',
                     'step': self.current_step,
-                    'price': current_price,
+                    'naphtha_price': current_naphtha,
+                    'brent_price': current_brent,
                     'pnl': 0.0
                 })
 
         elif action == 2:  # Sell/Short
             if self.position == 1:
                 # Chiudi long
-                trade_pnl = current_price - self.entry_price
-                transaction_cost_paid += abs(trade_pnl) * self.transaction_cost if trade_pnl != 0 else current_price * self.transaction_cost
-                self.balance += trade_pnl - transaction_cost_paid
-                self.total_pnl += trade_pnl - transaction_cost_paid
+                trade_pnl = ((current_naphtha - self.entry_naphtha)/ self.entry_naphtha) + ((self.entry_brent - current_brent)/ self.entry_brent) 
+                self.balance += trade_pnl - self.transaction_cost
+                self.total_pnl += trade_pnl - self.transaction_cost
                 self.trades.append({
-                    'type': 'close_long',
+                    'type': 'close_long_crack',
                     'step': self.current_step,
-                    'price': current_price,
-                    'pnl': trade_pnl - transaction_cost_paid,
+                    'naphtha_price': current_naphtha,
+                    'brent_price': current_brent,
+                    'pnl': trade_pnl - self.transaction_cost,
                     'holding_period': self.time_in_position
                 })
                 self.position = 0
-                self.entry_price = 0.0
+                self.entry_naphtha = 0.0
+                self.entry_brent = 0.0
                 self.time_in_position = 0
-            if self.position == 0:
+            elif self.position == 0:
                 # Apri short
                 self.position = -1
-                self.entry_price = current_price
+                self.entry_naphtha = current_naphtha
+                self.entry_brent = current_brent
                 self.time_in_position = 0
-                transaction_cost_paid += current_price * self.transaction_cost
-                self.balance -= transaction_cost_paid
+                self.balance -= self.transaction_cost
                 self.trades.append({
-                    'type': 'open_short',
+                    'type': 'open_short_crack',
                     'step': self.current_step,
-                    'price': current_price,
+                    'naphtha_price': current_naphtha,
+                    'brent_price': current_brent,
                     'pnl': 0.0
                 })
 
@@ -241,23 +247,27 @@ class TradingEnvironmentCloseOnly:
 
         # Se finito, chiudi posizioni aperte
         if done and self.position != 0:
-            close_price = self.prices[self.current_step]
+            close_naphtha = self.naphtha_prices[self.current_step]
+            close_brent = self.brent_prices[self.current_step]
+
             if self.position == 1:
-                trade_pnl = close_price - self.entry_price
+                trade_pnl = (close_naphtha - self.entry_naphtha) + (self.entry_brent - close_brent)
             else:
-                trade_pnl = self.entry_price - close_price
-            tc = abs(trade_pnl) * self.transaction_cost if trade_pnl != 0 else close_price * self.transaction_cost
-            self.balance += trade_pnl - tc
-            self.total_pnl += trade_pnl - tc
+                trade_pnl = ((self.entry_naphtha - close_naphtha)/ self.entry_naphtha) + ((close_brent - self.entry_brent)/ self.entry_brent)
+ 
+            self.balance += trade_pnl - self.transaction_cost
+            self.total_pnl += trade_pnl - self.transaction_cost
             self.trades.append({
                 'type': 'force_close',
                 'step': self.current_step,
-                'price': close_price,
-                'pnl': trade_pnl - tc,
+                'naphtha_price': close_naphtha,
+                'brent_price': close_brent,
+                'pnl': trade_pnl - self.transaction_cost,
                 'holding_period': self.time_in_position
             })
             self.position = 0
-            self.entry_price = 0.0
+            self.entry_naphtha = 0.0
+            self.entry_brent = 0.0
             self.time_in_position = 0
 
         current_portfolio = self._get_portfolio_value()
@@ -286,11 +296,16 @@ class TradingEnvironmentCloseOnly:
         """Calcola il valore corrente del portafoglio."""
         unrealized = 0.0
         if self.position != 0:
-            current_price = self.prices[self.current_step]
+            current_naphtha= self.naphtha_prices[self.current_step]
+            current_brent = self.brent_prices[self.current_step]
             if self.position == 1:
-                unrealized = current_price - self.entry_price
+                pnl_naphtha=(current_naphtha - self.entry_naphtha)/ self.entry_naphtha
+                pnl_brent = (self.entry_brent - current_brent)/ self.entry_brent
             else:
-                unrealized = self.entry_price - current_price
+                pnl_naphtha= (self.entry_naphtha - current_naphtha)/ self.entry_naphtha
+                pnl_brent = (current_brent - self.entry_brent) / self.entry_naphtha
+            unrealized = pnl_naphtha + pnl_brent
+
         return self.balance + unrealized
 
     def _compute_reward(self, daily_return: float) -> float:
@@ -388,3 +403,27 @@ class TradingEnvironmentCloseOnly:
         print(f"  [{idx+1:3d}] unrealized_pnl_normalized")
         print(f"  [{idx+2:3d}] time_in_position_normalized (0.0 to 1.0)")
         print(f"{'='*60}\n")
+
+if __name__ == "__main__":
+    env = TradingEnvironmentCloseOnly(
+        data_path="Data/naphtha_crack_test.csv",
+        window_size=20,
+        initial_balance=100000.0,
+        transaction_cost=0.0,
+        reward_type="pnl"
+    )
+
+    state = env.reset()
+    done = False
+
+    while not done:
+        action = np.random.randint(0,3)  # hold sempre, solo per testare che l'environment giri
+        next_state, reward, done, info = env.step(action)
+        state = next_state
+
+    results = env.get_metrics()
+
+    print("Return:", results["total_return"])
+    print("Sharpe:", results["sharpe_ratio"])
+    print("Trades:", results["n_trades"])
+    print("Win rate:", results["win_rate"])

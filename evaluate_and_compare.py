@@ -17,7 +17,7 @@ from mean_reversion_strategy import MeanReversionStrategy
 
 def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
                        initial_balance: float = 100000.0,
-                       transaction_cost: float = 0.001) -> dict:
+                       transaction_cost: float = 0.0005) -> dict:
     """Valuta l'agente DRL sul dataset di test."""
     env = TradingEnvironmentCloseOnly(
         data_path=data_path,
@@ -57,9 +57,9 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
 
 
 def evaluate_benchmark(data_path: str, lookback: int = 20,
-                       entry_threshold: float = 2.0,
+                       entry_threshold: float = 1.2,
                        initial_balance: float = 100000.0,
-                       transaction_cost: float = 0.001) -> dict:
+                       transaction_cost: float = 0.0005) -> dict:
     """Valuta la strategia di mean reversion benchmark (Scaillet-style)."""
     strategy = MeanReversionStrategy(
         lookback=lookback,
@@ -194,9 +194,9 @@ def main():
     parser.add_argument('--output_dir', type=str, default='Data/evaluation_results', help='Cartella output')
     parser.add_argument('--window_size', type=int, default=20)
     parser.add_argument('--initial_balance', type=float, default=100000.0)
-    parser.add_argument('--transaction_cost', type=float, default=0.001)
+    parser.add_argument('--transaction_cost', type=float, default=0.0005)
     parser.add_argument('--mr_lookback', type=int, default=20, help='Lookback mean reversion')
-    parser.add_argument('--mr_entry', type=float, default=1.0, help='Entry threshold mean reversion (z-score). '
+    parser.add_argument('--mr_entry', type=float, default=1.2, help='Entry threshold mean reversion (z-score). '
                         'Lower = more trades. Default 1.0 for synthetic data, use 2.0 for real data.')
     args = parser.parse_args()
 
