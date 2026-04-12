@@ -100,6 +100,9 @@ def train(args):
             else: 
                 loss = None   
 
+            if loss is not None and step % 100 == 0:
+                print(f"Learning step | Episode {episode+1} | Step {step} | Loss: {loss:.8f}", flush=True)    
+
             # Track loss
             if loss is not None:
                 episode_loss += loss
@@ -258,7 +261,7 @@ def parse_args():
     parser.add_argument('--save_dir', type=str, default='Data/results_training', help='Cartella per salvare i risultati')
     # Ambiente
     parser.add_argument('--window_size', type=int, default=20)
-    parser.add_argument('--initial_balance', type=float, default=100000.0)
+    parser.add_argument('--initial_balance', type=float, default=1.0)
     parser.add_argument('--transaction_cost', type=float, default=0.001)
     parser.add_argument('--reward_type', type=str, default='pnl', choices=['pnl', 'sharpe', 'sortino'])
     # Agente
@@ -266,7 +269,7 @@ def parse_args():
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon_start', type=float, default=1.0)
     parser.add_argument('--epsilon_end', type=float, default=0.01)
-    parser.add_argument('--epsilon_decay', type=int, default=10000)
+    parser.add_argument('--epsilon_decay', type=int, default=50000)
     parser.add_argument('--buffer_size', type=int, default=100000)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--target_update', type=int, default=1000)

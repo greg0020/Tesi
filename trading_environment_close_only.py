@@ -167,12 +167,14 @@ class TradingEnvironmentCloseOnly:
         prev_portfolio = self._get_portfolio_value()
         trade_pnl = 0.0
         transaction_cost_paid = 0.0
+        
 
         # Gestione posizioni
         if action == 1:  # Buy/Long
             if self.position == -1:
                 # Chiudi short
                 trade_pnl = ((self.entry_naphtha - current_naphtha)/self.entry_naphtha) + ((current_brent - self.entry_brent)/ self.entry_brent)
+               
                 self.balance += trade_pnl - self.transaction_cost
                 self.total_pnl += trade_pnl - self.transaction_cost
                 self.trades.append({
@@ -206,6 +208,7 @@ class TradingEnvironmentCloseOnly:
             if self.position == 1:
                 # Chiudi long
                 trade_pnl = ((current_naphtha - self.entry_naphtha)/ self.entry_naphtha) + ((self.entry_brent - current_brent)/ self.entry_brent) 
+                
                 self.balance += trade_pnl - self.transaction_cost
                 self.total_pnl += trade_pnl - self.transaction_cost
                 self.trades.append({
@@ -251,7 +254,7 @@ class TradingEnvironmentCloseOnly:
             close_brent = self.brent_prices[self.current_step]
 
             if self.position == 1:
-                trade_pnl = (close_naphtha - self.entry_naphtha) + (self.entry_brent - close_brent)
+                trade_pnl = ((close_naphtha - self.entry_naphtha)/ self.entry_naphtha) + ((self.entry_brent - close_brent)/self.entry_brent)
             else:
                 trade_pnl = ((self.entry_naphtha - close_naphtha)/ self.entry_naphtha) + ((close_brent - self.entry_brent)/ self.entry_brent)
  
@@ -278,7 +281,7 @@ class TradingEnvironmentCloseOnly:
         self.daily_returns.append(daily_ret)
 
         # Calcola reward
-        reward = self._compute_reward(daily_ret)
+        reward = self._compute_reward(daily_ret) 
         self.rewards_history.append(reward)
 
         next_state = self._get_state() if not done else np.zeros(self.state_dim, dtype=np.float32)
@@ -303,7 +306,7 @@ class TradingEnvironmentCloseOnly:
                 pnl_brent = (self.entry_brent - current_brent)/ self.entry_brent
             else:
                 pnl_naphtha= (self.entry_naphtha - current_naphtha)/ self.entry_naphtha
-                pnl_brent = (current_brent - self.entry_brent) / self.entry_naphtha
+                pnl_brent = (current_brent - self.entry_brent) / self.entry_brent
             unrealized = pnl_naphtha + pnl_brent
 
         return self.balance + unrealized
@@ -311,7 +314,7 @@ class TradingEnvironmentCloseOnly:
     def _compute_reward(self, daily_return: float) -> float:
         """Calcola il reward in base al tipo selezionato."""
         if self.reward_type == 'pnl':
-            return daily_return * 100  # scala per stabilità
+            return daily_return * 1000  # scala per stabilità
 
         elif self.reward_type == 'sharpe':
             if len(self.daily_returns) < 2:

@@ -39,10 +39,10 @@ class MeanReversionStrategy:
                  lookback: int = 20,
                  entry_threshold: float = 1.2,
                  holding_period: int = 3,
-                 stop_loss: float = 0.3,
-                 take_profit: float = 0.3,
-                 initial_balance: float = 100000.0,
-                 transaction_cost: float = 0.0005):
+                 stop_loss: float = 0.01,
+                 take_profit: float = 0.01,
+                 initial_balance: float = 1.0,
+                 transaction_cost: float = 0.001):
         """
         Args:
             lookback: rolling window for volatility of daily changes
@@ -109,9 +109,9 @@ class MeanReversionStrategy:
             if pos != 0:
                 bars_held += 1
                 if pos == 1:
-                    pnl = prices[i] - entry_price 
+                    pnl = (prices[i] - entry_price) / entry_price 
                 else:  # pos == -1
-                    pnl = entry_price - prices[i] 
+                    pnl = (entry_price - prices[i] ) / entry_price
 
                 exit_now = False
                 # Fixed holding period
@@ -228,9 +228,9 @@ class MeanReversionStrategy:
             # Daily mark-to-market PnL on open position (before any action)
             mtm = 0.0
             if pos == 1:
-                mtm = price - prev_price
+                mtm = (price - prev_price) / prev_price
             elif pos == -1:
-                mtm = prev_price - price
+                mtm = (prev_price - price) / prev_price
 
             trade_pnl = 0.0
             tc = 0.0
@@ -239,9 +239,9 @@ class MeanReversionStrategy:
             if pos != 0 and action != 0:
                 # Closing the position
                 if pos == 1:
-                    raw_pnl = price - entry_price 
+                    raw_pnl = (price - entry_price) / entry_price
                 else:
-                    raw_pnl = entry_price - price 
+                    raw_pnl = (entry_price - price) / entry_price
                 tc_close = self.transaction_cost
                 trade_pnl = raw_pnl - tc_close
                 trades.append({
@@ -306,9 +306,9 @@ class MeanReversionStrategy:
             # Portfolio value = balance + unrealised PnL
             unrealised = 0.0
             if pos == 1:
-                unrealised = price - entry_price
+                unrealised = (price - entry_price) / entry_price
             elif pos == -1:
-                unrealised = entry_price - price
+                unrealised = (entry_price - price) / entry_price
             pv = balance + unrealised
             portfolio_values[i] = pv
 
@@ -316,10 +316,10 @@ class MeanReversionStrategy:
         if pos != 0:
             final_price = prices[-1]
             if pos == 1:
-                raw_pnl = final_price - entry_price
+                raw_pnl = (final_price - entry_price) / entry_price
             else:
-                raw_pnl = entry_price - final_price
-            tc_close = abs(final_price) * self.transaction_cost
+                raw_pnl = (entry_price - final_price) / entry_price
+            tc_close = self.transaction_cost
             trade_pnl = raw_pnl - tc_close
             balance += trade_pnl
             trades.append({

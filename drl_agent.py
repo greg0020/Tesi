@@ -109,6 +109,7 @@ class DRLAgent:
         "Seleziona un'azione con politica epsilon-greedy (training) o greedy (eval)."
         if training:
             epsilon = self.get_epsilon()
+            self.steps_done += 1
             if random.random() < epsilon:
                 return random.randrange(self.action_dim)
 
@@ -151,7 +152,7 @@ class DRLAgent:
         nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
-        self.steps_done += 1
+        
 
         # Aggiorna target network
         if self.steps_done % self.target_update == 0:

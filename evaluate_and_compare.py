@@ -16,15 +16,19 @@ from mean_reversion_strategy import MeanReversionStrategy
 
 
 def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
-                       initial_balance: float = 100000.0,
-                       transaction_cost: float = 0.0005) -> dict:
+                       initial_balance: float = 1.0,
+                       transaction_cost: float = 0.001,
+                       feature_mean = None,
+                       feature_std = None) -> dict:
     """Valuta l'agente DRL sul dataset di test."""
     env = TradingEnvironmentCloseOnly(
         data_path=data_path,
         window_size=window_size,
         initial_balance=initial_balance,
         transaction_cost=transaction_cost,
-        reward_type='pnl'
+        reward_type='pnl',
+        feature_mean=feature_mean,
+        feature_std=feature_std,
     )
 
     agent = DRLAgent(
@@ -58,8 +62,8 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
 
 def evaluate_benchmark(data_path: str, lookback: int = 20,
                        entry_threshold: float = 1.2,
-                       initial_balance: float = 100000.0,
-                       transaction_cost: float = 0.0005) -> dict:
+                       initial_balance: float = 1.0,
+                       transaction_cost: float = 0.001) -> dict:
     """Valuta la strategia di mean reversion benchmark (Scaillet-style)."""
     strategy = MeanReversionStrategy(
         lookback=lookback,
@@ -70,7 +74,7 @@ def evaluate_benchmark(data_path: str, lookback: int = 20,
     return strategy.backtest(data_path)
 
 
-def buy_and_hold(data_path: str, initial_balance: float = 100000.0) -> dict:
+def buy_and_hold(data_path: str, initial_balance: float = 1.0) -> dict:
     """Calcola il benchmark Buy & Hold."""
     df = pd.read_csv(data_path)
     prices = df['Close'].values.astype(np.float64)
@@ -193,8 +197,8 @@ def main():
     parser.add_argument('--test_data', type=str, default= 'Data/naphtha_crack_test.csv', help='CSV dati di test')
     parser.add_argument('--output_dir', type=str, default='Data/evaluation_results', help='Cartella output')
     parser.add_argument('--window_size', type=int, default=20)
-    parser.add_argument('--initial_balance', type=float, default=100000.0)
-    parser.add_argument('--transaction_cost', type=float, default=0.0005)
+    parser.add_argument('--initial_balance', type=float, default=1.0)
+    parser.add_argument('--transaction_cost', type=float, default=0.001)
     parser.add_argument('--mr_lookback', type=int, default=20, help='Lookback mean reversion')
     parser.add_argument('--mr_entry', type=float, default=1.2, help='Entry threshold mean reversion (z-score). '
                         'Lower = more trades. Default 1.0 for synthetic data, use 2.0 for real data.')
@@ -211,12 +215,21 @@ def main():
 
     # Valuta DRL
     print("\n[1/3] Valutazione agente DRL...")
+    model_dir = os.path.dirname(args.model_path)
+    feature_mean_path = os.path.join(model_dir, 'feature_mean.npy')
+    feature_std_path = os.path.join(model_dir, 'feature_std.npy')
+
+    feature_mean = np.load(feature_mean_path)
+    feature_std = np.load(feature_std_path)
+
     drl_metrics = evaluate_drl_agent(
         model_path=args.model_path,
         data_path=args.test_data,
         window_size=args.window_size,
         initial_balance=args.initial_balance,
-        transaction_cost=args.transaction_cost
+        transaction_cost=args.transaction_cost,
+        feature_mean=feature_mean,
+        feature_std=feature_std
     )
     print(f"DRL evaluation complete", flush=True)
     print(f"  Return: {drl_metrics['total_return']:.2%} | Sharpe: {drl_metrics['sharpe_ratio']:.3f} | "
