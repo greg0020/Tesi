@@ -37,7 +37,7 @@ class MeanReversionStrategy:
 
     def __init__(self,
                  lookback: int = 20,
-                 entry_threshold: float = 1.2,
+                 entry_threshold: float = 2.0,
                  holding_period: int = 3,
                  stop_loss: float = 0.01,
                  take_profit: float = 0.01,

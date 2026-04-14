@@ -39,7 +39,7 @@ def train(args):
         initial_balance=args.initial_balance,
         transaction_cost=args.transaction_cost,
         reward_type=args.reward_type,
-        feature_groups=args.feature_groups
+        strategy_type=args.strategy_type
     )
 
     np.save(os.path.join(save_dir, 'feature_mean.npy'), env.feature_mean)
@@ -75,7 +75,7 @@ def train(args):
     print(f"Train data: {args.train_data}", flush=True)
 
     # Variabili per il monitoraggio
-    best_reward = -np.inf
+    best_return = -np.inf
     episode_rewards = []
     episode_metrics = []
     training_log = []  # <-- NEW: per-episode log
@@ -156,8 +156,8 @@ def train(args):
             print(f"Episode {episode+1}/{args.n_episodes} | Reward: {total_reward:.2f} | Epsilon: {epsilon:.4f}", flush=True)
 
         # Salva modello migliore
-        if total_reward > best_reward:
-            best_reward = total_reward
+        if metrics['total_return'] > best_return:
+            best_return = metrics['total_return']
             agent.save(os.path.join(save_dir, 'best_model.pt'))
 
         # Salva checkpoint periodico
@@ -182,10 +182,10 @@ def train(args):
     # NEW: Save summary metrics.json
     # =====================================================================
     summary = {
-        'best_reward': round(float(best_reward), 6),
+        'best_return': round(float(best_return), 6),
         'final_portfolio_value': round(float(training_log[-1]['final_portfolio_value']), 2),
-        'average_reward': round(float(np.mean(episode_rewards)), 6),
-        'average_reward_last_50': round(float(np.mean(episode_rewards[-50:])), 6),
+        'average_return': round(float(np.mean(episode_rewards)), 6),
+        'average_return_last_50': round(float(np.mean(episode_rewards[-50:])), 6),
         'best_sharpe': round(float(max(m.get('sharpe_ratio', 0) for m in episode_metrics)), 4),
         'total_episodes': args.n_episodes,
         'final_epsilon': round(float(agent.get_epsilon()), 6),
@@ -246,7 +246,7 @@ def train(args):
     print(f"📊 Plot saved: {epsilon_plot_path}", flush=True)
 
     print(f"\n✅ Addestramento completato. Risultati salvati in: {save_dir}")
-    print(f"   Miglior reward: {best_reward:.4f}")
+    print(f"   Miglior return: {best_return:.4f}")
     print(f"   File generati:")
     print(f"     - training_log.csv")
     print(f"     - metrics.json")
@@ -265,14 +265,17 @@ def parse_args():
     # Ambiente
     parser.add_argument('--window_size', type=int, default=20)
     parser.add_argument('--initial_balance', type=float, default=1.0)
-    parser.add_argument('--transaction_cost', type=float, default=0.001)
+    parser.add_argument('--transaction_cost', type=float, default=0.0008)
     parser.add_argument('--reward_type', type=str, default='pnl', choices=['pnl', 'sharpe', 'sortino'])
+    parser.add_argument('--strategy_type', type=str, default='drl', 
+                   choices=['drl', 'mean_reversion'],
+                   help="Feature set: 'drl' o 'mean_reversion'")
     # Agente
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon_start', type=float, default=1.0)
-    parser.add_argument('--epsilon_end', type=float, default=0.01)
-    parser.add_argument('--epsilon_decay', type=int, default=50000)
+    parser.add_argument('--epsilon_end', type=float, default=0.001)
+    parser.add_argument('--epsilon_decay', type=int, default=100000)
     parser.add_argument('--buffer_size', type=int, default=100000)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--target_update', type=int, default=1000)

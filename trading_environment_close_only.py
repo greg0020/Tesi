@@ -180,6 +180,9 @@ class TradingEnvironmentCloseOnly:
         prev_portfolio = self._get_portfolio_value()
         trade_pnl = 0.0
         starting_position = self.position
+
+        if self.position != 0 and self.time_in_position < 2:
+           action = 0
         
 
         # Gestione posizioni
@@ -328,15 +331,21 @@ class TradingEnvironmentCloseOnly:
         """Calcola il reward in base al tipo selezionato."""
         if self.reward_type == 'pnl':
            reward = daily_return * 10000    
-           # penalizza troppo trading
-           reward -= 0.001 * abs(self.position)   
-           # bonus se prende direzione giusta
-        if daily_return > 0 and self.position != 0:
-           reward += 0.001
 
-           if abs(daily_return) < 0.001:
-               reward -= 0.001
-           
+           #reward -= 0.0002 if self.position != 0 else 0
+           #reward += 0.02 if daily_return > 0 and self.position != 0 else 0
+           #reward -= 0.01 if daily_return < 0 and self.position != 0 else 0
+           #if self.position == 0:
+               #reward -= 1.0
+           #reward -= -0.001 * abs(self.position)
+
+           #if daily_return > 0 and self.position != 0 :
+               #reward += 0.01
+
+           #if abs(daily_return) < 0.001:
+               #reward -= 0.001
+
+
            return reward
 
         elif self.reward_type == 'sharpe':
