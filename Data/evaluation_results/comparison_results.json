@@ -1,16 +1,16 @@
 {
   "drl_agent": {
-    "total_return": -0.19291656871610863,
-    "sharpe_ratio": -1.1902699971576658,
-    "sortino_ratio": -1.5815482624315675,
-    "max_drawdown": 0.19980253254953445,
-    "n_trades": 107,
-    "win_rate": 0.4672897196261682,
-    "final_balance": 0.8070834312838914,
-    "total_pnl": -0.08591656871610859,
-    "mean_daily_return": -0.00016103749817781966,
-    "std_daily_return": 0.0021477404603256105,
-    "total_reward": -211.2811976092994
+    "total_return": -0.15523232627924122,
+    "sharpe_ratio": -1.1043364478359607,
+    "sortino_ratio": -1.6913405502074847,
+    "max_drawdown": 0.2030252241499899,
+    "n_trades": 98,
+    "win_rate": 0.4489795918367347,
+    "final_balance": 0.8447676737207588,
+    "total_pnl": -0.057232326279243906,
+    "mean_daily_return": -0.00012690533490981483,
+    "std_daily_return": 0.001824226431410553,
+    "total_reward": 8098.845946906758
   },
   "mean_reversion": {
     "total_return": -0.2843609548145517,

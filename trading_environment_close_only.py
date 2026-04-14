@@ -17,10 +17,12 @@ class TradingEnvironmentCloseOnly:
     """
 
     def __init__(self, data_path: str, window_size: int = 20,
-                 initial_balance: float = 100000.0,
+                 initial_balance: float = 1.0,
                  transaction_cost: float = 0.001,
                  reward_type: str = 'pnl',
-                 feature_groups: list = None):
+                 strategy_type: str = 'drl',
+                 feature_mean = None,
+                 feature_std = None):
         """
         Inizializza l'ambiente di trading.
 
@@ -30,17 +32,13 @@ class TradingEnvironmentCloseOnly:
             initial_balance: capitale iniziale
             transaction_cost: costo di transazione (percentuale)
             reward_type: tipo di reward ('pnl', 'sharpe', 'sortino')
-            feature_groups: lista di prefissi feature da usare, es. ['naphtha', 'brent', 'crack'].
-                           None = usa tutte. Opzioni: 'naphtha', 'brent', 'crack', 
-                           'correlation', 'beta', 'vol_diff', 'vol_ratio', 'momentum_diff',
-                           'ratio_dist', 'return_diff', 'naphtha_brent_ratio',
-                           'naphtha_contribution', 'brent_contribution',
-                           'naphtha_direction', 'brent_direction'
+            strategy_type: 'drl' o 'mean_reversion'. Determina il set di feature da usare.
         """
         self.window_size = window_size
         self.initial_balance = initial_balance
         self.transaction_cost = transaction_cost
         self.reward_type = reward_type
+        self.min_holding = 0
 
         # Carica e prepara dati
         self.df = pd.read_csv(data_path)
@@ -52,22 +50,37 @@ class TradingEnvironmentCloseOnly:
         exclude_cols = ['Date', 'Close', 'Naphtha_Close', 'Brent_Close', 'Brent_Volume' ,  'Crack_Spread']
         all_feature_cols = [c for c in self.df.columns if c not in exclude_cols]
 
-        # Filtra feature per gruppo se specificato
-        if feature_groups is not None:
-            feature_cols = [c for c in all_feature_cols 
-                          if any(c.startswith(prefix) for prefix in feature_groups)]
-            if len(feature_cols) == 0:
-                raise ValueError(f"Nessuna feature trovata per i gruppi: {feature_groups}. "
-                               f"Colonne disponibili: {all_feature_cols[:10]}...")
+                
+        drl_features = ["shock", "shock_lag1", "zscore_crack", "deviation_from_mean", 
+                        "half_life_proxy", "brent_volume_zscore_20"]
+        mr_features = ["zscore_crack", "deviation_from_mean", "shock"]
+        
+        if strategy_type == "drl":
+            feature_cols = drl_features
+        elif strategy_type == "mean_reversion":
+            feature_cols = mr_features
         else:
-            feature_cols = all_feature_cols
+            raise ValueError(f"strategy_type deve essere 'drl' o 'mean_reversion', ricevuto: {strategy_type}")
+        
+        # Valida che tutte le feature esistono nel dataset
+        missing = [f for f in feature_cols if f not in all_feature_cols]
+        if missing:
+            raise ValueError(f"Feature mancanti nel dataset: {missing}. "
+                           f"Colonne disponibili: {all_feature_cols}")
 
         self.feature_names = feature_cols
         self.features = self.df[feature_cols].values.astype(np.float64)
 
         # Normalizza le feature (z-score sul dataset)
-        self.feature_mean = self.features.mean(axis=0)
-        self.feature_std = self.features.std(axis=0) + 1e-8
+        if feature_mean is None or feature_std is None :
+            self.feature_mean = self.features.mean(axis=0)
+            self.feature_std = self.features.std(axis=0) + 1e-8
+
+        else: 
+            self.feature_mean = np.array(feature_mean, dtype=np.float64)
+            self.feature_std = np.array(feature_std, dtype=np.float64) + 1e-8
+
+        
         self.features_norm = (self.features - self.feature_mean) / self.feature_std
 
         self.n_features = self.features_norm.shape[1]
@@ -166,12 +179,12 @@ class TradingEnvironmentCloseOnly:
         current_brent = self.brent_prices[self.current_step]
         prev_portfolio = self._get_portfolio_value()
         trade_pnl = 0.0
-        transaction_cost_paid = 0.0
+        starting_position = self.position
         
 
         # Gestione posizioni
         if action == 1:  # Buy/Long
-            if self.position == -1:
+            if starting_position == -1 :
                 # Chiudi short
                 trade_pnl = ((self.entry_naphtha - current_naphtha)/self.entry_naphtha) + ((current_brent - self.entry_brent)/ self.entry_brent)
                
@@ -182,14 +195,14 @@ class TradingEnvironmentCloseOnly:
                     'step': self.current_step,
                     'naphtha_price': current_naphtha,
                     'brent_price': current_brent,
-                    'pnl': trade_pnl - transaction_cost_paid,
+                    'pnl': trade_pnl - self.transaction_cost,
                     'holding_period': self.time_in_position
                 })
                 self.position = 0
                 self.entry_naphtha = 0.0
                 self.entry_brent = 0.0
                 self.time_in_position = 0
-            elif self.position == 0:
+            elif starting_position == 0:
                 # Apri long
                 self.position = 1
                 self.entry_naphtha = current_naphtha
@@ -205,7 +218,7 @@ class TradingEnvironmentCloseOnly:
                 })
 
         elif action == 2:  # Sell/Short
-            if self.position == 1:
+            if starting_position == 1 :
                 # Chiudi long
                 trade_pnl = ((current_naphtha - self.entry_naphtha)/ self.entry_naphtha) + ((self.entry_brent - current_brent)/ self.entry_brent) 
                 
@@ -223,7 +236,7 @@ class TradingEnvironmentCloseOnly:
                 self.entry_naphtha = 0.0
                 self.entry_brent = 0.0
                 self.time_in_position = 0
-            elif self.position == 0:
+            elif starting_position == 0:
                 # Apri short
                 self.position = -1
                 self.entry_naphtha = current_naphtha
@@ -281,7 +294,7 @@ class TradingEnvironmentCloseOnly:
         self.daily_returns.append(daily_ret)
 
         # Calcola reward
-        reward = self._compute_reward(daily_ret) 
+        reward = self._compute_reward(daily_ret)
         self.rewards_history.append(reward)
 
         next_state = self._get_state() if not done else np.zeros(self.state_dim, dtype=np.float32)
@@ -314,7 +327,17 @@ class TradingEnvironmentCloseOnly:
     def _compute_reward(self, daily_return: float) -> float:
         """Calcola il reward in base al tipo selezionato."""
         if self.reward_type == 'pnl':
-            return daily_return * 1000  # scala per stabilità
+           reward = daily_return * 10000    
+           # penalizza troppo trading
+           reward -= 0.001 * abs(self.position)   
+           # bonus se prende direzione giusta
+        if daily_return > 0 and self.position != 0:
+           reward += 0.001
+
+           if abs(daily_return) < 0.001:
+               reward -= 0.001
+           
+           return reward
 
         elif self.reward_type == 'sharpe':
             if len(self.daily_returns) < 2:

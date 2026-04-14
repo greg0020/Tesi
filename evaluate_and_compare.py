@@ -19,7 +19,8 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
                        initial_balance: float = 1.0,
                        transaction_cost: float = 0.001,
                        feature_mean = None,
-                       feature_std = None) -> dict:
+                       feature_std = None,
+                       feature_groups = None) -> dict:
     """Valuta l'agente DRL sul dataset di test."""
     env = TradingEnvironmentCloseOnly(
         data_path=data_path,
@@ -29,6 +30,7 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
         reward_type='pnl',
         feature_mean=feature_mean,
         feature_std=feature_std,
+        feature_groups=feature_groups,
     )
 
     agent = DRLAgent(
@@ -42,7 +44,7 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
     actions_taken = []
 
     while True:
-        action = agent.select_action(state, training=False)
+        action = agent.select_action(state, training=True)
         actions_taken.append(action)
         next_state, reward, done, info = env.step(action)
         total_reward += reward
@@ -216,6 +218,11 @@ def main():
     # Valuta DRL
     print("\n[1/3] Valutazione agente DRL...")
     model_dir = os.path.dirname(args.model_path)
+    config_path = os.path.join(model_dir, 'config.json')
+    with open(config_path, 'r') as f:
+        train_config = json.load(f)
+
+    feature_groups = train_config.get('feature_groups', None)
     feature_mean_path = os.path.join(model_dir, 'feature_mean.npy')
     feature_std_path = os.path.join(model_dir, 'feature_std.npy')
 
@@ -229,7 +236,8 @@ def main():
         initial_balance=args.initial_balance,
         transaction_cost=args.transaction_cost,
         feature_mean=feature_mean,
-        feature_std=feature_std
+        feature_std=feature_std,
+        feature_groups=feature_groups,
     )
     print(f"DRL evaluation complete", flush=True)
     print(f"  Return: {drl_metrics['total_return']:.2%} | Sharpe: {drl_metrics['sharpe_ratio']:.3f} | "

@@ -42,6 +42,9 @@ def train(args):
         feature_groups=args.feature_groups
     )
 
+    np.save(os.path.join(save_dir, 'feature_mean.npy'), env.feature_mean)
+    np.save(os.path.join(save_dir, 'feature_std.npy'), env.feature_std)
+
     # Stampa struttura dello stato
     env.print_state_info()
 
@@ -57,7 +60,7 @@ def train(args):
         buffer_size=args.buffer_size,
         batch_size=args.batch_size,
         target_update=args.target_update,
-        hidden_sizes=[args.hidden1, args.hidden2, args.hidden3]
+        hidden_sizes=[args.hidden2, args.hidden3]
     )
 
     print(f"\nDimensione stato: {env.state_dim}")
@@ -273,7 +276,6 @@ def parse_args():
     parser.add_argument('--buffer_size', type=int, default=100000)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--target_update', type=int, default=1000)
-    parser.add_argument('--hidden1', type=int, default=128)
     parser.add_argument('--hidden2', type=int, default=64)
     parser.add_argument('--hidden3', type=int, default=32)
     # Training

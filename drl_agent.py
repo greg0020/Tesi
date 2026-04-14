@@ -85,7 +85,7 @@ class DRLAgent:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if hidden_sizes is None:
-            hidden_sizes = [128, 64, 32]
+            hidden_sizes = [64, 32]
 
         # Reti policy e target
         self.policy_net = QNetwork(state_dim, action_dim, hidden_sizes).to(self.device)

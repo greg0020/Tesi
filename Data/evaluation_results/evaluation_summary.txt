@@ -2,17 +2,17 @@
 EVALUATION SUMMARY
 ============================================================
 Test data: data/naphtha_crack_test.csv
-Model: Data/results_training/run_20260412_171511/best_model.pt
+Model: Data/results_training/run_20260413_201409/best_model.pt
 Initial balance: $1.00
 
 --- DRL Agent ---
-  Total Return:  -19.29%
-  Sharpe Ratio:  -1.190
-  Sortino Ratio: -1.582
-  Max Drawdown:  19.98%
-  N. Trades:     107
-  Win Rate:      46.73%
-  Final Balance: $0.81
+  Total Return:  -15.52%
+  Sharpe Ratio:  -1.104
+  Sortino Ratio: -1.691
+  Max Drawdown:  20.30%
+  N. Trades:     98
+  Win Rate:      44.90%
+  Final Balance: $0.84
 
 --- Mean Reversion ---
   Total Return:  -28.44%
