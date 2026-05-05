@@ -11,14 +11,9 @@ from collections import deque
 
 class TradingEnvironmentCloseOnly:
 
-    """
-    Ambiente di trading che usa solo prezzi di chiusura e feature derivate.
-    Pensato per strategie di mean reversion su spread (naphtha crack).
-    """
-
     def __init__(self, data_path: str, window_size: int = 20,
                  initial_balance: float = 1.0,
-                 transaction_cost: float = 0.001,
+                 transaction_cost: float = 0.0,
                  reward_type: str = 'pnl',
                  strategy_type: str = 'drl',
                  feature_mean = None,
@@ -51,22 +46,15 @@ class TradingEnvironmentCloseOnly:
         all_feature_cols = [c for c in self.df.columns if c not in exclude_cols]
 
                 
-        drl_features = ["shock", "shock_lag1", "zscore_crack", "deviation_from_mean", 
-                        "half_life_proxy", "brent_volume_zscore_20"]
+        drl_features = ["shock", "deviation_from_mean","zscore_crack","shock_x_volume" ,"shock_lag1", "half_life_proxy"]
         mr_features = ["zscore_crack", "deviation_from_mean", "shock"]
         
         if strategy_type == "drl":
             feature_cols = drl_features
-        elif strategy_type == "mean_reversion":
-            feature_cols = mr_features
         else:
-            raise ValueError(f"strategy_type deve essere 'drl' o 'mean_reversion', ricevuto: {strategy_type}")
+            feature_cols = mr_features
         
-        # Valida che tutte le feature esistono nel dataset
-        missing = [f for f in feature_cols if f not in all_feature_cols]
-        if missing:
-            raise ValueError(f"Feature mancanti nel dataset: {missing}. "
-                           f"Colonne disponibili: {all_feature_cols}")
+
 
         self.feature_names = feature_cols
         self.features = self.df[feature_cols].values.astype(np.float64)
@@ -74,11 +62,11 @@ class TradingEnvironmentCloseOnly:
         # Normalizza le feature (z-score sul dataset)
         if feature_mean is None or feature_std is None :
             self.feature_mean = self.features.mean(axis=0)
-            self.feature_std = self.features.std(axis=0) + 1e-8
+            self.feature_std = self.features.std(axis=0) 
 
         else: 
             self.feature_mean = np.array(feature_mean, dtype=np.float64)
-            self.feature_std = np.array(feature_std, dtype=np.float64) + 1e-8
+            self.feature_std = np.array(feature_std, dtype=np.float64) 
 
         
         self.features_norm = (self.features - self.feature_mean) / self.feature_std
@@ -117,25 +105,7 @@ class TradingEnvironmentCloseOnly:
         return self._get_state()
 
     def _get_state(self) -> np.ndarray:
-        """
-        Costruisce il vettore di stato corrente (18 dimensioni).
-
-        Struttura:
-          [0:15]  15 feature di mercato (normalizzate z-score)
-          [15]    position_encoding: -1=short, 0=flat, 1=long
-          [16]    unrealized_pnl: PnL non realizzato normalizzato per entry price
-          [17]    time_in_position: step in posizione / max_holding (saturato a 1.0)
-
-        Motivazioni per le 3 variabili di stato dell'agente:
-        - position_encoding: l'agente deve sapere la sua posizione corrente
-          per decidere se mantenerla, chiuderla o invertirla.
-        - unrealized_pnl: cattura il rischio corrente e incentiva il profit-taking
-          o lo stop-loss in modo informato.
-        - time_in_position: nel framework Scaillet, il holding period è cruciale.
-          Un trade mean-reversion ha un half-life stimato; se il tempo in posizione
-          supera il half-life atteso senza convergenza, è segnale di uscita.
-          Normalizzato a [0,1] dove 1.0 = max_holding raggiunto.
-        """
+        
         # Feature normalizzate al passo corrente
         features = self.features_norm[self.current_step]
 
@@ -181,7 +151,7 @@ class TradingEnvironmentCloseOnly:
         trade_pnl = 0.0
         starting_position = self.position
 
-        if self.position != 0 and self.time_in_position < 2:
+        if self.position != 0 and self.time_in_position <= 2:
            action = 0
         
 
@@ -407,37 +377,7 @@ class TradingEnvironmentCloseOnly:
             'std_daily_return': float(std_return),
         }
 
-    def print_state_info(self):
-        """Stampa informazioni dettagliate sul vettore di stato."""
-        print(f"\n{'='*60}")
-        print(f"STRUTTURA VETTORE DI STATO (input della rete neurale)")
-        print(f"{'='*60}")
-        print(f"Dimensione totale: {self.state_dim}")
-        print(f"  - Feature di mercato: {self.n_features}")
-        print(f"  - Posizione corrente: 1 (valori: -1=short, 0=flat, 1=long)")
-        print(f"  - PnL non realizzato: 1 (normalizzato per entry price)")
-        print(f"  - Tempo in posizione: 1 (normalizzato a [0,1], max={self.max_holding})")
-        print(f"\nFeature di mercato ({self.n_features}):")
-        
-        # Raggruppa per prefisso
-        groups = {}
-        for name in self.feature_names:
-            prefix = name.split('_')[0]
-            if prefix not in groups:
-                groups[prefix] = []
-            groups[prefix].append(name)
-        
-        idx = 0
-        for group, cols in groups.items():
-            print(f"\n  [{group}] ({len(cols)} feature):")
-            for col in cols:
-                print(f"    [{idx:3d}] {col}")
-                idx += 1
-        
-        print(f"\n  [{idx:3d}] position_encoding (-1/0/1)")
-        print(f"  [{idx+1:3d}] unrealized_pnl_normalized")
-        print(f"  [{idx+2:3d}] time_in_position_normalized (0.0 to 1.0)")
-        print(f"{'='*60}\n")
+         
 
 if __name__ == "__main__":
     env = TradingEnvironmentCloseOnly(
@@ -458,7 +398,7 @@ if __name__ == "__main__":
 
     results = env.get_metrics()
 
-    print("Return:", results["total_return"])
-    print("Sharpe:", results["sharpe_ratio"])
-    print("Trades:", results["n_trades"])
-    print("Win rate:", results["win_rate"])
+    print("Return:",results["total_return"])
+    print("Sharpe:",results["sharpe_ratio"])
+    print("Trades:",results["n_trades"])
+    print("Win rate:",results["win_rate"])

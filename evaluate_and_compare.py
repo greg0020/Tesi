@@ -17,7 +17,7 @@ from mean_reversion_strategy import MeanReversionStrategy
 
 def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
                        initial_balance: float = 1.0,
-                       transaction_cost: float = 0.001,
+                       transaction_cost: float = 0.0,
                        feature_mean = None,
                        feature_std = None,
                        strategy_type: str = 'drl') -> dict:
@@ -63,10 +63,10 @@ def evaluate_drl_agent(model_path: str, data_path: str, window_size: int = 20,
 
 
 def evaluate_benchmark(data_path: str, lookback: int = 20,
-                       entry_threshold: float = 2.0,
+                       entry_threshold: float = 2.3,
                        initial_balance: float = 1.0,
-                       transaction_cost: float = 0.001) -> dict:
-    """Valuta la strategia di mean reversion benchmark (Scaillet-style)."""
+                       transaction_cost: float = 0.00) -> dict:
+    """Valuta la strategia di mean reversion benchmark (Scaillet)."""
     strategy = MeanReversionStrategy(
         lookback=lookback,
         entry_threshold=entry_threshold,
@@ -161,23 +161,19 @@ def main():
     parser.add_argument('--output_dir', type=str, default='Data/evaluation_results', help='Cartella output')
     parser.add_argument('--window_size', type=int, default=20)
     parser.add_argument('--initial_balance', type=float, default=1.0)
-    parser.add_argument('--transaction_cost', type=float, default=0.001)
+    parser.add_argument('--transaction_cost', type=float, default=0.0001)
     parser.add_argument('--mr_lookback', type=int, default=20, help='Lookback mean reversion')
     parser.add_argument('--mr_entry', type=float, default=2.2, help='Entry threshold mean reversion (z-score). '
                         'Lower = more trades. Default 1.0 for synthetic data, use 2.0 for real data.')
     args = parser.parse_args()
 
-    print(f"Loading model: {args.model_path}", flush=True)
-    print(f"Test data: {args.test_data}", flush=True)
+ 
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    print("=" * 60)
-    print("VALUTAZIONE E CONFRONTO STRATEGIE")
-    print("=" * 60)
-
+    
     # Valuta DRL
-    print("\n[1/3] Valutazione agente DRL...")
+   
     model_dir = os.path.dirname(args.model_path)
     config_path = os.path.join(model_dir, 'config.json')
     with open(config_path, 'r') as f:
@@ -202,12 +198,9 @@ def main():
         feature_std=feature_std,
         strategy_type=strategy_type,
     )
-    print(f"DRL evaluation complete", flush=True)
-    print(f"  Return: {drl_metrics['total_return']:.2%} | Sharpe: {drl_metrics['sharpe_ratio']:.3f} | "
-          f"Trades: {drl_metrics['n_trades']} | Win Rate: {drl_metrics['win_rate']:.2%}")
-
+    
     # Valuta Mean Reversion
-    print("\n[2/3] Valutazione strategia Mean Reversion...")
+    
     mr_metrics = evaluate_benchmark(
         data_path=args.test_data,
         lookback=args.mr_lookback,
@@ -215,10 +208,7 @@ def main():
         initial_balance=args.initial_balance,
         transaction_cost=args.transaction_cost
     )
-    print(f"Benchmark evaluation complete", flush=True)
-    print(f"  Return: {mr_metrics['total_return']:.2%} | Sharpe: {mr_metrics['sharpe_ratio']:.3f} | "
-          f"Trades: {mr_metrics['n_trades']} | Win Rate: {mr_metrics['win_rate']:.2%}")
-
+    
    
     # Salva risultati
     results = {
@@ -228,15 +218,13 @@ def main():
     results_path = os.path.join(args.output_dir, 'comparison_results.json')
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"\nRisultati salvati in: {results_path}")
+   
 
     # Genera grafici
     plot_path = os.path.join(args.output_dir, 'comparison_plot.png')
     plot_comparison(drl_metrics, mr_metrics, save_path=plot_path)
 
-    # =====================================================================
-    # NEW: Save comparison as readable CSV
-    # =====================================================================
+   
     comparison_rows = []
     for key, label in [('total_return', 'Total Return'), ('sharpe_ratio', 'Sharpe Ratio'),
                        ('sortino_ratio', 'Sortino Ratio'), ('max_drawdown', 'Max Drawdown'),
@@ -250,11 +238,9 @@ def main():
     comp_df = pd.DataFrame(comparison_rows)
     comp_csv_path = os.path.join(args.output_dir, 'comparison_table.csv')
     comp_df.to_csv(comp_csv_path, index=False)
-    print(f"\n📄 Comparison CSV saved: {comp_csv_path}", flush=True)
+    
 
-    # =====================================================================
-    # NEW: Save portfolio values as CSV (for external analysis)
-    # =====================================================================
+  
     max_len = max(len(drl_metrics['portfolio_values']),
                   len(mr_metrics['portfolio_values']))
     
@@ -268,11 +254,7 @@ def main():
     })
     pv_csv_path = os.path.join(args.output_dir, 'portfolio_values.csv')
     pv_df.to_csv(pv_csv_path, index=False)
-    print(f"📄 Portfolio values CSV saved: {pv_csv_path}", flush=True)
-
-    # =====================================================================
-    # NEW: Save human-readable text summary
-    # =====================================================================
+    
     summary_lines = [
         "=" * 60,
         "EVALUATION SUMMARY",
@@ -298,10 +280,8 @@ def main():
     summary_path = os.path.join(args.output_dir, 'evaluation_summary.txt')
     with open(summary_path, 'w') as f:
         f.write(summary_text)
-    print(f"📄 Text summary saved: {summary_path}", flush=True)
 
-    # Print it too
-    print("\n" + summary_text)
+   
 
     # Stampa tabella riassuntiva
     print("\n" + "=" * 60)

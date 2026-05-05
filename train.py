@@ -45,8 +45,7 @@ def train(args):
     np.save(os.path.join(save_dir, 'feature_mean.npy'), env.feature_mean)
     np.save(os.path.join(save_dir, 'feature_std.npy'), env.feature_std)
 
-    # Stampa struttura dello stato
-    env.print_state_info()
+    
 
     # Inizializza agente
     agent = DRLAgent(
@@ -63,12 +62,7 @@ def train(args):
         hidden_sizes=[args.hidden2, args.hidden3]
     )
 
-    print(f"\nDimensione stato: {env.state_dim}")
-    print(f"Numero azioni: {env.action_space_n}")
-    print(f"Device: {agent.device}")
-    print(f"Dati training: {args.train_data}")
-    print(f"Episodi: {args.n_episodes}")
-    print(f"Reward type: {args.reward_type}\n")
+    
 
     # Log inizio training
     print(f"Starting training: {args.n_episodes} episodes, reward={args.reward_type}", flush=True)
@@ -78,7 +72,7 @@ def train(args):
     best_return = -np.inf
     episode_rewards = []
     episode_metrics = []
-    training_log = []  # <-- NEW: per-episode log
+    training_log = []  
 
     for episode in range(args.n_episodes):
         state = env.reset()
@@ -143,17 +137,15 @@ def train(args):
             avg_reward = np.mean(episode_rewards[-args.print_every:])
             print(f"Ep. {episode + 1}/{args.n_episodes} | "
                   f"Reward: {total_reward:.4f} | "
-                  f"Avg Reward: {avg_reward:.4f} | "
                   f"Return: {metrics['total_return']:.4%} | "
                   f"Sharpe: {metrics['sharpe_ratio']:.3f} | "
                   f"Trades: {metrics['n_trades']} | "
                   f"Win Rate: {metrics['win_rate']:.2%} | "
-                  f"Epsilon: {epsilon:.4f} | "
                   f"Loss: {avg_loss:.6f}", flush=True)
 
         # Log ogni 50 episodi
-        if (episode + 1) % 50 == 0:
-            print(f"Episode {episode+1}/{args.n_episodes} | Reward: {total_reward:.2f} | Epsilon: {epsilon:.4f}", flush=True)
+        if (episode + 1) % 10 == 0:
+            print(f"Episode {episode+1}/{args.n_episodes} | Reward: {total_reward:.2f}", flush=True)
 
         # Salva modello migliore
         if metrics['total_return'] > best_return:
@@ -170,17 +162,12 @@ def train(args):
     with open(os.path.join(save_dir, 'episode_metrics.json'), 'w') as f:
         json.dump(episode_metrics, f, indent=2, default=str)
 
-    # =====================================================================
-    # NEW: Save training_log.csv
-    # =====================================================================
+  
     log_df = pd.DataFrame(training_log)
     log_csv_path = os.path.join(save_dir, 'training_log.csv')
     log_df.to_csv(log_csv_path, index=False)
-    print(f"\n📄 Training log saved: {log_csv_path}", flush=True)
+    
 
-    # =====================================================================
-    # NEW: Save summary metrics.json
-    # =====================================================================
     summary = {
         'best_return': round(float(best_return), 6),
         'final_portfolio_value': round(float(training_log[-1]['final_portfolio_value']), 2),
@@ -193,11 +180,7 @@ def train(args):
     summary_path = os.path.join(save_dir, 'metrics.json')
     with open(summary_path, 'w') as f:
         json.dump(summary, f, indent=2)
-    print(f"📄 Summary metrics saved: {summary_path}", flush=True)
-
-    # =====================================================================
-    # NEW: Generate and save plots
-    # =====================================================================
+    
     episodes_range = range(1, args.n_episodes + 1)
 
     # Plot 1: Reward per episode
@@ -215,7 +198,6 @@ def train(args):
     reward_plot_path = os.path.join(save_dir, 'reward_per_episode.png')
     fig.savefig(reward_plot_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    print(f"📊 Plot saved: {reward_plot_path}", flush=True)
 
     # Plot 2: Portfolio value per episode
     fig, ax = plt.subplots(figsize=(12, 5))
@@ -230,7 +212,7 @@ def train(args):
     portfolio_plot_path = os.path.join(save_dir, 'portfolio_per_episode.png')
     fig.savefig(portfolio_plot_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    print(f"📊 Plot saved: {portfolio_plot_path}", flush=True)
+    
 
     # Plot 3: Epsilon decay
     fig, ax = plt.subplots(figsize=(12, 5))
@@ -243,16 +225,10 @@ def train(args):
     epsilon_plot_path = os.path.join(save_dir, 'epsilon_decay.png')
     fig.savefig(epsilon_plot_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    print(f"📊 Plot saved: {epsilon_plot_path}", flush=True)
+    
 
-    print(f"\n✅ Addestramento completato. Risultati salvati in: {save_dir}")
-    print(f"   Miglior return: {best_return:.4f}")
-    print(f"   File generati:")
-    print(f"     - training_log.csv")
-    print(f"     - metrics.json")
-    print(f"     - reward_per_episode.png")
-    print(f"     - portfolio_per_episode.png")
-    print(f"     - epsilon_decay.png")
+    print(f"Addestramento completato.")
+    
 
     return save_dir
 
@@ -265,7 +241,7 @@ def parse_args():
     # Ambiente
     parser.add_argument('--window_size', type=int, default=20)
     parser.add_argument('--initial_balance', type=float, default=1.0)
-    parser.add_argument('--transaction_cost', type=float, default=0.0008)
+    parser.add_argument('--transaction_cost', type=float, default=0.0001)
     parser.add_argument('--reward_type', type=str, default='pnl', choices=['pnl', 'sharpe', 'sortino'])
     parser.add_argument('--strategy_type', type=str, default='drl', 
                    choices=['drl', 'mean_reversion'],
@@ -282,16 +258,12 @@ def parse_args():
     parser.add_argument('--hidden2', type=int, default=64)
     parser.add_argument('--hidden3', type=int, default=32)
     # Training
-    parser.add_argument('--n_episodes', type=int, default=100)
+    parser.add_argument('--n_episodes', type=int, default=150)
     parser.add_argument('--print_every', type=int, default=10)
-    parser.add_argument('--save_every', type=int, default=100)
+    parser.add_argument('--save_every', type=int, default=50)
     # Feature selection
     parser.add_argument('--feature_groups', type=str, nargs='+', default=None,
-                        help='Gruppi di feature da usare (es. naphtha brent crack correlation). '
-                             'Default: tutte. Opzioni: naphtha, brent, crack, correlation, beta, '
-                             'vol_diff, vol_ratio, momentum_diff, ratio_dist, return_diff, '
-                             'naphtha_brent_ratio, naphtha_contribution, brent_contribution, '
-                             'naphtha_direction, brent_direction')
+                        help='Gruppi di feature da usare')
 
     return parser.parse_args()
 

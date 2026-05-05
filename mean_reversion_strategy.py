@@ -1,21 +1,3 @@
-"""
-Scaillet et al. shock-based mean-reversion strategy for the naphtha crack spread.
-Scaillet-style mean reversion (standardized daily crack shocks):
-    delta_t   = P_t - P_{t-1}          (daily change in the crack spread)
-    vol_t     = rolling_std(delta, w)   (local volatility of daily changes)
-    shock_t   = delta_t / vol_t         (standardized shock)
-    Entry is *contrarian* on the shock: a large positive shock (shock > +k)
-    suggests an abnormal upward move that is likely to revert, so we go SHORT;
-    a large negative shock (shock < -k) triggers a LONG.
-    Exit is NOT based on the shock returning to zero.  Instead, positions are
-    held for a fixed horizon h, or closed early by a stop-loss / take-profit
-    on the raw PnL.  This avoids the whipsaw problem of z-score-exit rules
-    and directly targets the transient, mean-reverting component of daily
-    spread innovations.
-
-This module serves as a benchmark for comparing DRL agent performance.
-"""
-
 import numpy as np
 import pandas as pd
 
@@ -24,34 +6,25 @@ class MeanReversionStrategy:
     """
     Shock-based mean-reversion strategy (Scaillet et al.).
 
-    Signal logic:
-        shock_t = (Close_t - Close_{t-1}) / rolling_std(delta, lookback)
-        - shock_t >  entry_threshold  →  open SHORT (contrarian)
-        - shock_t < -entry_threshold  →  open LONG  (contrarian)
-
-    Exit logic (whichever comes first):
-        - fixed holding period h expired
-        - raw unrealised PnL hits +take_profit  → close with profit
-        - raw unrealised PnL hits -stop_loss    → close with loss
     """
 
     def __init__(self,
                  lookback: int = 20,
-                 entry_threshold: float = 2.0,
-                 holding_period: int = 3,
-                 stop_loss: float = 0.01,
-                 take_profit: float = 0.01,
+                 entry_threshold: float = 2,
+                 holding_period: int = 10,
+                 stop_loss: float = 0.0,
+                 take_profit: float = 0.0,
                  initial_balance: float = 1.0,
-                 transaction_cost: float = 0.001):
+                 transaction_cost: float = 0.0):
         """
         Args:
             lookback: rolling window for volatility of daily changes
             entry_threshold: shock magnitude to trigger entry
-            holding_period: max days to hold a position before forced exit
-            stop_loss: raw PnL loss threshold to trigger early exit (>0)
-            take_profit: raw PnL profit threshold to trigger early exit (>0)
+            holding_period: maximum days to hold a position before forced exit
+            stop_loss: two-leg unrealised PnL loss threshold to trigger early exit (>0)
+            take_profit: two-leg unrealised PnL profit threshold to trigger early exit (>0)
             initial_balance: starting capital
-            transaction_cost: proportional cost per trade (applied to price)
+            transaction_cost: proportional cost per trade (applied once at open, once at close)
         """
         self.lookback = lookback
         self.entry_threshold = entry_threshold
@@ -84,71 +57,85 @@ class MeanReversionStrategy:
 
 
 
-    def generate_signals(self, prices: np.ndarray) -> dict:
-        
-        _, _, shock = self.compute_shocks(prices)
+    def generate_signals(self,
+                         prices: np.ndarray,
+                         naphtha: np.ndarray,
+                         brent: np.ndarray,
+                         half_life: np.ndarray) -> dict:
+
+        _, vol, shock = self.compute_shocks(prices)
         n = len(prices)
 
         signals = np.zeros(n, dtype=int)
         positions = np.zeros(n, dtype=int)
         entry_prices = np.zeros(n, dtype=np.float64)
         time_in_position = np.zeros(n, dtype=int)
-        unrealised_pnl = np.zeros(n, dtype=np.float64)
+        ma = pd.Series(prices).rolling(50).mean().values
 
         # State variables
         pos = 0          # current position: -1, 0, +1
         entry_price = 0.0
+        entry_naphtha = 0.0
+        entry_brent = 0.0
         bars_held = 0
 
         for i in range(n):
             s = shock[i]
 
-            
             # 1. If in a position, check exit conditions FIRST                #
-           
+
             if pos != 0:
                 bars_held += 1
+
+                # Two-leg unrealised PnL
                 if pos == 1:
-                    pnl = (prices[i] - entry_price) / entry_price 
-                else:  # pos == -1
-                    pnl = (entry_price - prices[i] ) / entry_price
+                    unrealised = ((naphtha[i] - entry_naphtha) / entry_naphtha
+                                  + (entry_brent - brent[i]) / entry_brent)
+                else:
+                    unrealised = ((entry_naphtha - naphtha[i]) / entry_naphtha
+                                  + (brent[i] - entry_brent) / entry_brent)
 
                 exit_now = False
-                # Fixed holding period
                 if bars_held >= self.holding_period:
                     exit_now = True
-                # Stop-loss
-                if pnl <= -self.stop_loss:
+                if unrealised <= -self.stop_loss:
                     exit_now = True
-                # Take-profit
-                if pnl >= self.take_profit:
+                if unrealised >= self.take_profit:
                     exit_now = True
 
                 if exit_now:
-                    # Signal to close: sell if long, buy if short
                     signals[i] = 2 if pos == 1 else 1
                     pos = 0
                     entry_price = 0.0
+                    entry_naphtha = 0.0
+                    entry_brent = 0.0
                     bars_held = 0
-                    # Record state after exit
                     positions[i] = 0
                     entry_prices[i] = 0.0
                     time_in_position[i] = 0
-                    unrealised_pnl[i] = 0.0
                     continue
                 else:
-                    # Still holding – record state
-                    unrealised_pnl[i] = pnl
                     positions[i] = pos
                     entry_prices[i] = entry_price
                     time_in_position[i] = bars_held
                     signals[i] = 0  # hold
                     continue
 
-            
             # 2. Flat – check entry conditions                                #
-            
+
             if np.isnan(s):
+                signals[i] = 0
+                positions[i] = 0
+                continue
+
+            # Volatility filter: trade only when vol is above the 30th percentile
+            #if np.isnan(vol[i]) or vol[i] < np.nanpercentile(vol, 30):
+                #signals[i] = 0
+                #positions[i] = 0
+                #continue
+
+            # Half-life filter: trade only when mean reversion is expected to be fast
+            if np.isnan(half_life[i]) or half_life[i] <= np.nanpercentile(half_life, 30):
                 signals[i] = 0
                 positions[i] = 0
                 continue
@@ -158,12 +145,16 @@ class MeanReversionStrategy:
                 signals[i] = 2
                 pos = -1
                 entry_price = prices[i]
+                entry_naphtha = naphtha[i]
+                entry_brent = brent[i]
                 bars_held = 0
             elif s < -self.entry_threshold:
                 # Large negative shock → contrarian LONG
                 signals[i] = 1
                 pos = 1
                 entry_price = prices[i]
+                entry_naphtha = naphtha[i]
+                entry_brent = brent[i]
                 bars_held = 0
             else:
                 signals[i] = 0
@@ -171,47 +162,44 @@ class MeanReversionStrategy:
             positions[i] = pos
             entry_prices[i] = entry_price
             time_in_position[i] = bars_held
-            unrealised_pnl[i] = 0.0
 
         return {
             'signals': signals,
             'positions': positions,
             'entry_prices': entry_prices,
             'time_in_position': time_in_position,
-            'unrealised_pnl': unrealised_pnl,
         }
 
-    # --------------------------------------------------------------------- #
-    #  Backtest                                                               #
-    # --------------------------------------------------------------------- #
 
     def backtest(self, data_path: str) -> dict:
-        """
-        Run the backtest on a CSV file with a 'Close' column.
-        """
+        
         df = pd.read_csv(data_path)
         prices = df['Close'].values.astype(np.float64)
+        naphtha = df['Naphtha_Close'].values.astype(np.float64)
+        brent = df['Brent_Close'].values.astype(np.float64)
+        half_life = df['half_life_proxy'].values.astype(np.float64)
         n = len(prices)
 
         # Diagnostic: print shock statistics
         _, _, shock = self.compute_shocks(prices)
         valid_shocks = shock[~np.isnan(shock)]
         if len(valid_shocks) > 0:
-            print(f"  📊 Shock stats: min={valid_shocks.min():.2f}, max={valid_shocks.max():.2f}, "
+            print(f"Shock stats: min={valid_shocks.min():.2f}, max={valid_shocks.max():.2f}, "
                   f"mean={valid_shocks.mean():.2f}, std={valid_shocks.std():.2f}", flush=True)
-            print(f"  📊 Shocks > +{self.entry_threshold:.1f}: {(valid_shocks > self.entry_threshold).sum()}, "
+            print(f"Shocks > +{self.entry_threshold:.1f}: {(valid_shocks > self.entry_threshold).sum()}, "
                   f"Shocks < -{self.entry_threshold:.1f}: {(valid_shocks < -self.entry_threshold).sum()}", flush=True)
         else:
-            print(f"  ⚠️ No valid shocks computed ", flush=True)
+            print(f"No shocks", flush=True)
 
-        sig_data = self.generate_signals(prices)
+        sig_data = self.generate_signals(prices, naphtha, brent, half_life)
         signals = sig_data['signals']
         positions_arr = sig_data['positions']
 
         # ---- Replay with transaction costs and PnL tracking --------------- #
         balance = self.initial_balance
         pos = 0
-        entry_price = 0.0
+        entry_naphtha = 0.0
+        entry_brent = 0.0
         bars_held = 0
 
         daily_pnl = np.zeros(n, dtype=np.float64)
@@ -222,34 +210,40 @@ class MeanReversionStrategy:
 
         for i in range(n):
             action = signals[i]
-            price = prices[i]
-            prev_price = prices[i - 1] if i > 0 else price
+            nph = naphtha[i]
+            brt = brent[i]
+            prev_nph = naphtha[i - 1] if i > 0 else nph
+            prev_brt = brent[i - 1] if i > 0 else brt
 
             # Daily mark-to-market PnL on open position (before any action)
+            # Long crack:  long Naphtha + short Brent
+            # Short crack: short Naphtha + long Brent
             mtm = 0.0
             if pos == 1:
-                mtm = (price - prev_price) / prev_price
+                mtm = 0.5* ((nph - prev_nph) / prev_nph + (prev_brt - brt) / prev_brt)
             elif pos == -1:
-                mtm = (prev_price - price) / prev_price
+                mtm = 0.5* ((prev_nph - nph) / prev_nph + (brt - prev_brt) / prev_brt)
 
             trade_pnl = 0.0
             tc = 0.0
 
             # ---- Process exit -------------------------------------------- #
             if pos != 0 and action != 0:
-                # Closing the position
+                # Closing the position – total PnL from entry to exit on both legs
                 if pos == 1:
-                    raw_pnl = (price - entry_price) / entry_price
+                    raw_pnl = 0.5 * ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
                 else:
-                    raw_pnl = (entry_price - price) / entry_price
+                    raw_pnl = 0.5 * ((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
                 tc_close = self.transaction_cost
                 trade_pnl = raw_pnl - tc_close
                 trades.append({
                     'type': 'close_long' if pos == 1 else 'close_short',
                     'entry_step': i - bars_held,
                     'exit_step': i,
-                    'entry_price': float(entry_price),
-                    'exit_price': float(price),
+                    'entry_naphtha': float(entry_naphtha),
+                    'entry_brent': float(entry_brent),
+                    'exit_naphtha': float(nph),
+                    'exit_brent': float(brt),
                     'bars_held': int(bars_held),
                     'raw_pnl': float(raw_pnl),
                     'tc': float(tc_close),
@@ -257,7 +251,8 @@ class MeanReversionStrategy:
                 })
                 balance += trade_pnl
                 pos = 0
-                entry_price = 0.0
+                entry_naphtha = 0.0
+                entry_brent = 0.0
                 bars_held = 0
                 # mtm for the day is captured via the trade PnL
                 # (already in balance), so reset mtm to avoid double counting
@@ -266,11 +261,7 @@ class MeanReversionStrategy:
 
             # ---- Process entry (may happen on same bar after exit) ------- #
             if pos == 0 and action != 0:
-                # Check if this is a pure entry signal
-                # action==1 → LONG, action==2 → SHORT
-                # But entries after an exit on the same bar only happen
-                # if generate_signals re-enters (it does not in current logic).
-                # So this handles initial entries only.
+                # action==1 → LONG crack, action==2 → SHORT crack
                 # For the exit bar, pos was just set to 0 above; the signal
                 # was the *exit* signal, not a new entry.  We skip re-entry
                 # on exit bars to keep it clean.
@@ -280,15 +271,18 @@ class MeanReversionStrategy:
                 else:
                     tc_open = self.transaction_cost
                     balance -= tc_open
-                    entry_price = price
+                    entry_naphtha = nph
+                    entry_brent = brt
                     bars_held = 0
                     pos = 1 if action == 1 else -1
                     trades.append({
                         'type': 'open_long' if pos == 1 else 'open_short',
                         'entry_step': i,
                         'exit_step': None,
-                        'entry_price': float(price),
-                        'exit_price': None,
+                        'entry_naphtha': float(nph),
+                        'entry_brent': float(brt),
+                        'exit_naphtha': None,
+                        'exit_brent': None,
                         'bars_held': 0,
                         'raw_pnl': 0.0,
                         'tc': float(tc_open),
@@ -303,22 +297,22 @@ class MeanReversionStrategy:
 
             realised_positions[i] = pos
 
-            # Portfolio value = balance + unrealised PnL
+            # Portfolio value = balance + unrealised PnL on both legs
             unrealised = 0.0
             if pos == 1:
-                unrealised = (price - entry_price) / entry_price
+                unrealised = 0.5 * ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
             elif pos == -1:
-                unrealised = (entry_price - price) / entry_price
+                unrealised = 0.5 * ((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
             pv = balance + unrealised
             portfolio_values[i] = pv
 
-        # ---- Force-close any open position at the end -------------------- #
         if pos != 0:
-            final_price = prices[-1]
+            final_nph = naphtha[-1]
+            final_brt = brent[-1]
             if pos == 1:
-                raw_pnl = (final_price - entry_price) / entry_price
+                raw_pnl = 0.5 * ((final_nph - entry_naphtha) / entry_naphtha + (entry_brent - final_brt) / entry_brent)
             else:
-                raw_pnl = (entry_price - final_price) / entry_price
+                raw_pnl = 0.5 * ((entry_naphtha - final_nph) / entry_naphtha + (final_brt - entry_brent) / entry_brent)
             tc_close = self.transaction_cost
             trade_pnl = raw_pnl - tc_close
             balance += trade_pnl
@@ -326,13 +320,16 @@ class MeanReversionStrategy:
                 'type': 'force_close',
                 'entry_step': int(n - 1 - bars_held),
                 'exit_step': int(n - 1),
-                'entry_price': float(entry_price),
-                'exit_price': float(final_price),
+                'entry_naphtha': float(entry_naphtha),
+                'entry_brent': float(entry_brent),
+                'exit_naphtha': float(final_nph),
+                'exit_brent': float(final_brt),
                 'bars_held': int(bars_held),
                 'raw_pnl': float(raw_pnl),
                 'tc': float(tc_close),
                 'net_pnl': float(trade_pnl),
             })
+            daily_pnl[-1] = trade_pnl
             portfolio_values[-1] = balance
 
         # ---- Compute performance metrics --------------------------------- #
@@ -380,11 +377,46 @@ class MeanReversionStrategy:
         }
 
 if __name__ == "__main__":
-        strategy = MeanReversionStrategy()
-        results = strategy.backtest("Data/naphtha_crack_test.csv")
-    
-        print("Return:", results["total_return"])
-        print("Sharpe:", results["sharpe_ratio"])
-        print("Trades:", results["n_trades"])
-        print("Win rate:", results["win_rate"])
+    import pandas as pd
 
+    data_path = "Data/naphtha_crack_test.csv"
+
+    holding_periods = [8, 9, 10]
+    entry_thresholds = [2.6, 2.7, 2.8]
+    
+
+    results_list = []
+
+    for hp in holding_periods:
+        for et in entry_thresholds:
+
+                    strategy = MeanReversionStrategy(
+                        entry_threshold=et,
+                        holding_period=hp,
+                        initial_balance=1.0,
+                        transaction_cost=0.0,
+                    )
+
+                    results = strategy.backtest(data_path)
+
+                    results_list.append({
+                        "holding_period": hp,
+                        "entry_threshold": et,
+                        "total_return": results["total_return"],
+                        "sharpe_ratio": results["sharpe_ratio"],
+                        "max_drawdown": results["max_drawdown"],
+                        "n_trades": results["n_trades"],
+                        "win_rate": results["win_rate"],
+                    })
+
+                    print(
+                        f"hp={hp}, et={et:.1f} | "
+                        f"Ret={results['total_return']:.2%} | "
+                        f"Sharpe={results['sharpe_ratio']:.3f} | "
+                        f"Trades={results['n_trades']}"
+                    )
+
+    df_results = pd.DataFrame(results_list)
+
+    # salva tutto
+    df_results.to_csv("Data/mr_grid_search_full.csv", index=False)
