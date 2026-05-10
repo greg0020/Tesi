@@ -10,8 +10,12 @@ import argparse
 import os
 
 
-def compute_crack_features(crack: pd.Series, naphtha: pd.Series, brent: pd.Series, brent_volume: pd.Series ,
-                           vol_window: int = 20, mean_window: int = 20) -> pd.DataFrame:
+def compute_crack_features(crack:pd.Series,
+                            naphtha: pd.Series,
+                            brent: pd.Series, 
+                            brent_volume: pd.Series ,
+                            vol_window: int = 20,
+                             mean_window: int = 20) -> pd.DataFrame:
     """
     Calcola le feature per il mean-reversion trading del crack spread,
     seguendo il framework di Scaillet et al.

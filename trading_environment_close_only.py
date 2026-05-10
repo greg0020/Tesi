@@ -300,7 +300,7 @@ class TradingEnvironmentCloseOnly:
     def _compute_reward(self, daily_return: float) -> float:
         """Calcola il reward in base al tipo selezionato."""
         if self.reward_type == 'pnl':
-           reward = daily_return * 10000    
+           reward = daily_return * 1000    
 
            #reward -= 0.0002 if self.position != 0 else 0
            #reward += 0.02 if daily_return > 0 and self.position != 0 else 0

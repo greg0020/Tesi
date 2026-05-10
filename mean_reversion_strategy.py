@@ -135,10 +135,10 @@ class MeanReversionStrategy:
                 #continue
 
             # Half-life filter: trade only when mean reversion is expected to be fast
-            if np.isnan(half_life[i]) or half_life[i] <= np.nanpercentile(half_life, 30):
-                signals[i] = 0
-                positions[i] = 0
-                continue
+            #if np.isnan(half_life[i]) or half_life[i] > np.nanpercentile(half_life, 50):
+                #signals[i] = 0
+                #positions[i] = 0
+                #continue
 
             if s > self.entry_threshold:
                 # Large positive shock → contrarian SHORT
@@ -220,9 +220,9 @@ class MeanReversionStrategy:
             # Short crack: short Naphtha + long Brent
             mtm = 0.0
             if pos == 1:
-                mtm = 0.5* ((nph - prev_nph) / prev_nph + (prev_brt - brt) / prev_brt)
+                mtm =  ((nph - prev_nph) / prev_nph + (prev_brt - brt) / prev_brt)
             elif pos == -1:
-                mtm = 0.5* ((prev_nph - nph) / prev_nph + (brt - prev_brt) / prev_brt)
+                mtm =  ((prev_nph - nph) / prev_nph + (brt - prev_brt) / prev_brt)
 
             trade_pnl = 0.0
             tc = 0.0
@@ -231,9 +231,9 @@ class MeanReversionStrategy:
             if pos != 0 and action != 0:
                 # Closing the position – total PnL from entry to exit on both legs
                 if pos == 1:
-                    raw_pnl = 0.5 * ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
+                    raw_pnl =  ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
                 else:
-                    raw_pnl = 0.5 * ((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
+                    raw_pnl =  ((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
                 tc_close = self.transaction_cost
                 trade_pnl = raw_pnl - tc_close
                 trades.append({
@@ -300,9 +300,9 @@ class MeanReversionStrategy:
             # Portfolio value = balance + unrealised PnL on both legs
             unrealised = 0.0
             if pos == 1:
-                unrealised = 0.5 * ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
+                unrealised = ((nph - entry_naphtha) / entry_naphtha + (entry_brent - brt) / entry_brent)
             elif pos == -1:
-                unrealised = 0.5 * ((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
+                unrealised =((entry_naphtha - nph) / entry_naphtha + (brt - entry_brent) / entry_brent)
             pv = balance + unrealised
             portfolio_values[i] = pv
 
@@ -310,9 +310,9 @@ class MeanReversionStrategy:
             final_nph = naphtha[-1]
             final_brt = brent[-1]
             if pos == 1:
-                raw_pnl = 0.5 * ((final_nph - entry_naphtha) / entry_naphtha + (entry_brent - final_brt) / entry_brent)
+                raw_pnl = ((final_nph - entry_naphtha) / entry_naphtha + (entry_brent - final_brt) / entry_brent)
             else:
-                raw_pnl = 0.5 * ((entry_naphtha - final_nph) / entry_naphtha + (final_brt - entry_brent) / entry_brent)
+                raw_pnl = ((entry_naphtha - final_nph) / entry_naphtha + (final_brt - entry_brent) / entry_brent)
             tc_close = self.transaction_cost
             trade_pnl = raw_pnl - tc_close
             balance += trade_pnl
