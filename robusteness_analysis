@@ -1,0 +1,108 @@
+import os
+import sys
+import subprocess
+import pandas as pd
+
+tc_scenarios = {
+    "0p2_bpt": 0.00002,
+    "0p5_bpt": 0.00005,
+}
+
+seeds = [42, 123, 999]
+
+TRAIN_SCRIPT = "train.py"
+EVAL_SCRIPT = "evaluate_and_compare.py"
+BASE_OUTPUT_DIR = "robustness_results"
+
+os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
+
+for label, tc in tc_scenarios.items():
+    for seed in seeds:
+
+        print("=" * 60)
+        print(f"RUNNING {label} | TC={tc} | seed={seed}")
+        print("=" * 60)
+
+        model_dir = os.path.join(BASE_OUTPUT_DIR, label, f"seed_{seed}", "model")
+        eval_dir = os.path.join(BASE_OUTPUT_DIR, label, f"seed_{seed}", "evaluation")
+
+        os.makedirs(model_dir, exist_ok=True)
+        os.makedirs(eval_dir, exist_ok=True)
+
+        train_cmd = [
+            sys.executable,
+            TRAIN_SCRIPT,
+            "--seed", str(seed),
+            "--transaction_cost", str(tc),
+            "--save_dir", model_dir,
+        ]
+
+        subprocess.run(train_cmd, check=True)
+
+        run_dirs = [
+            os.path.join(model_dir, d)
+            for d in os.listdir(model_dir)
+            if os.path.isdir(os.path.join(model_dir, d))
+        ]
+
+        if len(run_dirs) == 0:
+            raise RuntimeError(f"No run directory found in {model_dir}")
+
+        latest_run_dir = max(run_dirs, key=os.path.getmtime)
+        model_path = os.path.join(latest_run_dir, "final_model.pt")
+
+        eval_cmd = [
+            sys.executable,
+            EVAL_SCRIPT,
+            "--model_path", model_path,
+            "--transaction_cost", str(tc),
+            "--output_dir", eval_dir,
+        ]
+
+        subprocess.run(eval_cmd, check=True)
+
+        print(f"Completed {label} | seed={seed}")
+
+print("\nAll robustness tests completed.")
+
+summary_rows = []
+
+for label, tc in tc_scenarios.items():
+    for seed in seeds:
+
+        eval_dir = os.path.join(BASE_OUTPUT_DIR, label, f"seed_{seed}", "evaluation")
+        comparison_path = os.path.join(eval_dir, "comparison_table.csv")
+
+        if not os.path.exists(comparison_path):
+            print(f"Missing: {comparison_path}")
+            continue
+
+        df = pd.read_csv(comparison_path)
+
+        metrics = {
+            row["Metric"]: row["DRL_Agent"]
+            for _, row in df.iterrows()
+        }
+
+        summary_rows.append({
+            "TC_Label": label,
+            "TC": tc,
+            "Seed": seed,
+            "Total_Return": metrics.get("Total Return"),
+            "Sharpe": metrics.get("Sharpe Ratio"),
+            "Sortino": metrics.get("Sortino Ratio"),
+            "Max_Drawdown": metrics.get("Max Drawdown"),
+            "Trades": metrics.get("N. Trades"),
+            "Win_Rate": metrics.get("Win Rate"),
+        })
+
+summary_df = pd.DataFrame(summary_rows)
+
+summary_path = os.path.join(BASE_OUTPUT_DIR, "robustness_summary.csv")
+summary_df.to_csv(summary_path, index=False)
+
+print("\nROBUSTNESS SUMMARY")
+print("=" * 80)
+print(summary_df)
+print("=" * 80)
+print(f"\nSaved to: {summary_path}")

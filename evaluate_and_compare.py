@@ -260,6 +260,46 @@ def compute_rolling_exposure(positions, window=60):
     # ============================================================
 
 
+def compute_trade_analysis(metrics):
+
+    trades = metrics["trades"]
+
+    closed_trades = [
+        t for t in trades
+        if t["type"].startswith("close")
+        or t["type"] == "force_close"
+    ]
+
+    if len(closed_trades) == 0:
+        return None
+
+    pnls = np.array([t["pnl"] for t in closed_trades], dtype=float)
+
+    wins = pnls[pnls > 0]
+    losses = pnls[pnls <= 0]
+
+    hit_rate = len(wins) / len(pnls)
+    loss_rate = len(losses) / len(pnls)
+
+    avg_win = wins.mean()  
+    avg_loss = losses.mean() 
+
+    expected_trade_return = hit_rate * avg_win + loss_rate * avg_loss
+
+    analysis = {
+    "hit_rate":
+        hit_rate,
+    "loss_rate":
+        loss_rate,
+    "avg_win":
+        avg_win,
+    "avg_loss":
+        avg_loss,
+    "expected_trade_return":
+        expected_trade_return
+}
+
+    return analysis
 
 
 def generate_drl_empirical_plots(drl_metrics,mr_metrics, dates, save_dir):
@@ -582,6 +622,67 @@ def compute_annual_metrics_single_strategy(dates, metrics):
     return pd.DataFrame(rows)
     
 
+def compute_signal_conditioning_analysis(metrics, data_path):
+
+    df = pd.read_csv(data_path)
+
+    feature_cols = [
+    "shock",
+    "deviation_from_mean",
+    "zscore_crack",
+    "shock_x_volume",
+    "shock_lag1",
+    "half_life_proxy"
+]
+
+    global_means = df[feature_cols].mean()
+
+    feature_cols = [
+        "shock",
+        "deviation_from_mean",
+        "zscore_crack",
+        "shock_x_volume",
+        "shock_lag1",
+        "half_life_proxy"
+    ]
+
+    trades = metrics["trades"]
+
+    closed_trades = [
+        t for t in trades
+        if t["type"].startswith("close")
+        or t["type"] == "force_close"
+    ]
+
+    rows = []
+
+    for t in closed_trades:
+
+        step = t["step"]
+
+        if step >= len(df):
+            continue
+
+        row = {
+            "pnl": t["pnl"],
+            "winning_trade": 1 if t["pnl"] > 0 else 0
+        }
+
+        for f in feature_cols:
+            row[f] = df.iloc[step][f]
+
+        rows.append(row)
+
+    signal_df = pd.DataFrame(rows)
+
+    grouped = signal_df.groupby("winning_trade")[feature_cols].mean()
+
+    grouped.index = ["Losing Trades", "Winning Trades"]
+
+    result = pd.concat([global_means.rename("Global Mean"),grouped.T], axis=1)
+
+    return result
+
 def compute_regime_metrics(data_path, drl_metrics, mr_metrics, dates, brent_col="Brent_Close", window=20):
     """
     Divide il test set in regimi di alta e bassa volatilità Brent.
@@ -630,6 +731,59 @@ def compute_regime_metrics(data_path, drl_metrics, mr_metrics, dates, brent_col=
 
     return pd.DataFrame(rows)
 
+def compute_long_short_signal_analysis(metrics, data_path):
+
+    df = pd.read_csv(data_path)
+
+    feature_cols = [
+        "shock",
+        "deviation_from_mean",
+        "zscore_crack",
+        "shock_x_volume",
+        "shock_lag1",
+        "half_life_proxy"
+    ]
+
+    trades = metrics["trades"]
+
+    closed_trades = [
+        t for t in trades
+        if t["type"].startswith("close")
+        or t["type"] == "force_close"
+    ]
+
+    rows = []
+
+    for t in closed_trades:
+
+        step = t["step"]
+
+        if step >= len(df):
+            continue
+
+        if "long" in t["type"]:
+            signal_type = "Long"
+
+        elif "short" in t["type"]:
+            signal_type = "Short"
+
+        else:
+            continue
+
+        row = {
+            "signal_type": signal_type
+        }
+
+        for f in feature_cols:
+            row[f] = df.iloc[step][f]
+
+        rows.append(row)
+
+    signal_df = pd.DataFrame(rows)
+
+    grouped = signal_df.groupby("signal_type")[feature_cols].mean()
+
+    return grouped
 
 def plot_comparison(drl_metrics: dict,
                     mr_metrics: dict,
@@ -864,6 +1018,26 @@ def main():
     # Summary
     # ============================================================
     summary_text = save_summary(drl_metrics, mr_metrics, args, args.output_dir)
+
+    trade_analysis = compute_trade_analysis(drl_metrics)
+
+    trade_df = pd.DataFrame([trade_analysis])
+
+    trade_df.to_csv(os.path.join(args.output_dir, "trade_analysis.csv"),index=False)
+
+    signal_conditioning = compute_signal_conditioning_analysis(drl_metrics,args.test_data)
+
+    signal_conditioning.to_csv(os.path.join(args.output_dir, "signal_conditioning_analysis.csv"))
+
+    long_short_analysis = compute_long_short_signal_analysis(drl_metrics,args.test_data)
+
+    long_short_analysis.to_csv(os.path.join(args.output_dir, "long_short_signal_analysis.csv"))
+
+
+
+
+    print("\nTRADE ANALYSIS")
+    print(trade_df)
 
     print("\n" + summary_text)
 

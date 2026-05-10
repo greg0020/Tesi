@@ -1,0 +1,9 @@
+{
+  "best_return": 1.499981,
+  "final_portfolio_value": 2.38,
+  "average_return": 741.896722,
+  "average_return_last_50": 864.060934,
+  "best_sharpe": 1.7692,
+  "total_episodes": 150,
+  "final_epsilon": 0.001347
+}

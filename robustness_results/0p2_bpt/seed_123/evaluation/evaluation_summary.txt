@@ -1,0 +1,27 @@
+============================================================
+EVALUATION SUMMARY
+============================================================
+Test data: Data/naphtha_crack_test.csv
+Model: robustness_results/0p2_bpt/seed_123/model/run_20260510_171100/final_model.pt
+Initial balance: 1.0000
+Transaction cost: 2e-05
+
+--- DRL Agent ---
+  Total Return:  4.78%
+  Sharpe Ratio:  0.439
+  Sortino Ratio: 0.657
+  Max Drawdown:  1.82%
+  N. Trades:     195
+  Win Rate:      62.05%
+  Final Balance: 1.0478
+
+--- Mean Reversion ---
+  Total Return:  4.56%
+  Sharpe Ratio:  1.541
+  Sortino Ratio: 1.090
+  Max Drawdown:  0.44%
+  N. Trades:     92
+  Win Rate:      65.22%
+  Final Balance: 1.0456
+
+============================================================

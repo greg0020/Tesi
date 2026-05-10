@@ -12,6 +12,8 @@ import matplotlib
 matplotlib.use('Agg')  # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
+
 
 from trading_environment_close_only import TradingEnvironmentCloseOnly
 from drl_agent import DRLAgent
@@ -22,6 +24,9 @@ def train(args):
     print("=" * 60)
     print("ADDESTRAMENTO AGENTE DRL - NAPHTHA CRACK SPREAD")
     print("=" * 60)
+
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     # Crea cartella per i risultati
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -247,6 +252,7 @@ def parse_args():
                    choices=['drl', 'mean_reversion'],
                    help="Feature set: 'drl' o 'mean_reversion'")
     # Agente
+    parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon_start', type=float, default=1.0)
