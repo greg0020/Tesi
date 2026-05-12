@@ -10,6 +10,11 @@ import os
 import json
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from scipy.stats import ttest_1samp
+
 
 from trading_environment_close_only import TradingEnvironmentCloseOnly
 from drl_agent import DRLAgent
@@ -230,7 +235,6 @@ def compute_trade_returns_from_positions(daily_returns, positions):
     return np.array(trade_returns), np.array(holding_periods)
 
 
-def active_only_cumulative_returns(daily_returns, positions):
     """
     Calcola i cumulative returns solo nei giorni in cui la strategia è in posizione.
     Utile per rimuovere i tratti piatti della MR.
@@ -889,6 +893,214 @@ def save_summary(drl_metrics: dict,
 
     return summary_text
 
+def compute_action_conditioning_and_surrogate(metrics, data_path, output_dir):
+
+    df = pd.read_csv(data_path)
+
+    feature_cols = [
+        "shock",
+        "deviation_from_mean",
+        "zscore_crack",
+        "shock_x_volume",
+        "shock_lag1",
+        "half_life_proxy"
+    ]
+
+    positions = np.array(metrics["positions"], dtype=int)
+
+    n = min(len(df), len(positions))
+
+    X = df[feature_cols].iloc[:n].copy()
+    y = positions[:n]
+
+    data = X.copy()
+    data["position"] = y
+
+    label_map = {
+        -1: "Short",
+        0: "Flat",
+        1: "Long"
+    }
+
+    data["position_label"] = data["position"].map(label_map)
+
+    # ============================================================
+    # 1. ACTION / POSITION CONDITIONING TABLE
+    # ============================================================
+
+    conditioning = data.groupby("position_label")[feature_cols].mean()
+
+    conditioning.to_csv(
+        os.path.join(output_dir, "action_conditioning_analysis.csv")
+    )
+
+    # ============================================================
+    # 2. MULTINOMIAL LOGISTIC SURROGATE MODEL
+    # ============================================================
+
+    model = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=6,
+    random_state=42,
+    class_weight="balanced"
+)
+
+    model.fit(X, y)
+
+
+    importance_df = pd.DataFrame({
+    "feature": feature_cols,
+    "importance": model.feature_importances_
+}).sort_values("importance", ascending=False)
+
+    importance_df.to_csv(
+        os.path.join(output_dir, "surrogate_logistic_coefficients.csv")
+    )
+
+    accuracy = model.score(X, y)
+
+    acc_df = pd.DataFrame([{
+        "surrogate_accuracy": accuracy
+    }])
+
+    acc_df.to_csv(
+        os.path.join(output_dir, "surrogate_logistic_accuracy.csv"),
+        index=False
+    )
+
+    
+
+    return conditioning, importance_df, accuracy
+
+def compute_statistical_significance(metrics, output_dir, n_bootstrap=5000):
+
+    trades = metrics["trades"]
+
+    closed_trades = [
+        t for t in trades
+        if t["type"].startswith("close")
+        or t["type"] == "force_close"
+    ]
+
+    if len(closed_trades) == 0:
+        return None
+
+    trade_returns = np.array(
+        [t["pnl"] for t in closed_trades],
+        dtype=float
+    )
+
+    # ============================================================
+    # BASIC STATISTICS
+    # ============================================================
+
+    mean_trade_return = np.mean(trade_returns)
+
+    std_trade_return = np.std(trade_returns)
+
+    years = 5.25
+
+    trades_per_year = len(trade_returns) / years
+
+    sharpe_trade = (mean_trade_return/ (std_trade_return )) * np.sqrt(trades_per_year)
+
+    # ============================================================
+    # T-TEST
+    # H0: expected trade return = 0
+    # ============================================================
+
+    t_stat, p_value = ttest_1samp(
+        trade_returns,
+        popmean=0.0
+    )
+
+    # ============================================================
+    # BOOTSTRAP CONFIDENCE INTERVALS
+    # ============================================================
+
+    bootstrap_means = []
+
+    bootstrap_sharpes = []
+
+    n = len(trade_returns)
+
+    for _ in range(n_bootstrap):
+
+        sample = np.random.choice(
+            trade_returns,
+            size=n,
+            replace=True
+        )
+
+        sample_mean = np.mean(sample)
+
+        sample_std = np.std(sample)
+
+        sample_trades_per_year = len(sample) / years
+
+        sample_sharpe = (sample_mean/ (sample_std)) * np.sqrt(sample_trades_per_year)
+
+        bootstrap_means.append(sample_mean)
+
+        bootstrap_sharpes.append(sample_sharpe)
+
+    mean_ci = np.percentile(
+        bootstrap_means,
+        [2.5, 97.5]
+    )
+
+    sharpe_ci = np.percentile(
+        bootstrap_sharpes,
+        [2.5, 97.5]
+    )
+
+    # ============================================================
+    # RESULTS TABLE
+    # ============================================================
+
+    results = pd.DataFrame([{
+
+        "mean_trade_return":
+            mean_trade_return,
+
+        "mean_trade_return_ci_lower":
+            mean_ci[0],
+
+        "mean_trade_return_ci_upper":
+            mean_ci[1],
+
+        "trade_sharpe":
+            sharpe_trade,
+
+        "trade_sharpe_ci_lower":
+            sharpe_ci[0],
+
+        "trade_sharpe_ci_upper":
+            sharpe_ci[1],
+
+        "t_statistic":
+            t_stat,
+
+        "p_value":
+            p_value,
+
+        "n_trades":
+            n
+
+    }])
+
+    results.to_csv(
+        os.path.join(
+            output_dir,
+            "statistical_significance_analysis.csv"
+        ),
+        index=False
+    )
+
+    print("\nSTATISTICAL SIGNIFICANCE ANALYSIS")
+    print(results)
+
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description='Valutazione e confronto strategie')
@@ -1021,7 +1233,18 @@ def main():
 
     trade_analysis = compute_trade_analysis(drl_metrics)
 
+    conditioning, surrogate_coef, surrogate_acc = compute_action_conditioning_and_surrogate(
+    metrics=drl_metrics,
+    data_path=args.test_data,
+    output_dir=args.output_dir
+)
+
     trade_df = pd.DataFrame([trade_analysis])
+
+    significance_results = compute_statistical_significance(
+    metrics=drl_metrics,
+    output_dir=args.output_dir
+)
 
     trade_df.to_csv(os.path.join(args.output_dir, "trade_analysis.csv"),index=False)
 

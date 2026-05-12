@@ -1,0 +1,2 @@
+mean_trade_return,mean_trade_return_ci_lower,mean_trade_return_ci_upper,trade_sharpe,trade_sharpe_ci_lower,trade_sharpe_ci_upper,t_statistic,p_value,n_trades
+0.00024019046833926395,-0.00010455790698830183,0.0005688991208687575,0.6225607567874507,-0.2527389595518049,1.5520502437460195,1.4210109398564885,0.15770784697139978,131

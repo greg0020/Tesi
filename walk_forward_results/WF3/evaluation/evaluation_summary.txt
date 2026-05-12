@@ -1,0 +1,27 @@
+============================================================
+EVALUATION SUMMARY
+============================================================
+Test data: walk_forward_results/WF3/test.csv
+Model: walk_forward_results/WF3/model/run_20260512_125601/final_model.pt
+Initial balance: 1.0000
+Transaction cost: 1e-05
+
+--- DRL Agent ---
+  Total Return:  4.14%
+  Sharpe Ratio:  0.372
+  Sortino Ratio: 0.404
+  Max Drawdown:  7.83%
+  N. Trades:     141
+  Win Rate:      57.45%
+  Final Balance: 1.0414
+
+--- Mean Reversion ---
+  Total Return:  2.52%
+  Sharpe Ratio:  0.622
+  Sortino Ratio: 0.266
+  Max Drawdown:  2.42%
+  N. Trades:     54
+  Win Rate:      66.67%
+  Final Balance: 1.0252
+
+============================================================
